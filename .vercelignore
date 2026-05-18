@@ -1,0 +1,6 @@
+backups/
+test-output/
+node_modules/
+dist/
+.git/
+*.log
