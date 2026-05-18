@@ -1,0 +1,16 @@
+{
+  "name": "gestao-pessoal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App privada para gestão financeira, tempo, investimentos, orçamento e créditos.",
+  "scripts": {
+    "start": "vite --host 127.0.0.1",
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "vite": "^7.0.0"
+  }
+}

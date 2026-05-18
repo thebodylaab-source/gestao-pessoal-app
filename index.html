@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="description" content="App privada para gerir finanças, tempo, investimentos, orçamento e créditos.">
+  <title>Gestão Pessoal</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="src/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="src/styles.css">
+  <script src="https://apis.google.com/js/api.js" defer></script>
+  <script src="https://accounts.google.com/gsi/client" defer></script>
+  <script type="module" src="src/app.js"></script>
+</head>
+<body>
+<!-- ── LOCK SCREEN ── -->
+<div id="lockscreen" style="position:fixed;inset:0;background:#0a0a0f;z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0">
+  <div style="text-align:center;padding:48px 40px;background:#111118;border:1px solid #2a2a36;border-radius:16px;width:90%;max-width:380px">
+    <div style="font-family:Georgia,serif;font-size:2rem;color:#d4a843;margin-bottom:6px">Gestão <em>Pessoal</em></div>
+    <div style="font-size:0.75rem;color:#4a4858;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:36px">Acesso privado</div>
+    <input type="password" id="lock-input" placeholder="Password"
+      style="width:100%;background:#18181f;border:1px solid #2a2a36;border-radius:8px;color:#e8e6f0;font-size:1rem;padding:14px 16px;outline:none;text-align:center;letter-spacing:0.2em;margin-bottom:12px"
+      onkeydown="if(event.key==='Enter') checkPassword()">
+    <button onclick="checkPassword()"
+      style="width:100%;padding:13px;background:#d4a843;border:none;border-radius:8px;color:#0a0a0f;font-size:0.85rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer">
+      Entrar
+    </button>
+    <div id="lock-error" style="color:#e05c5c;font-size:0.78rem;margin-top:12px;opacity:0;transition:opacity 0.3s">Password incorreta</div>
+  </div>
+</div>
+
+
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-logo">Gestão <span>Pessoal</span></div>
+  <button class="tab-btn active" onclick="showTab('financeiro',this)">💰 Financeiro</button>
+  <button class="tab-btn" onclick="showTab('tempo',this)">⏱ Tempo</button>
+  <button class="tab-btn" onclick="showTab('investimentos',this)">📈 Investimentos</button>
+  <button class="tab-btn" onclick="showTab('orcamento',this)">🎯 Orçamento</button>
+  <button class="tab-btn" onclick="showTab('creditos',this)">🏦 Créditos</button>
+  <div style="flex:1"></div>
+  <div id="drive-status" style="display:flex;align-items:center;gap:10px;padding:0 8px">
+    <div id="drive-indicator" style="display:flex;align-items:center;gap:7px;font-size:0.72rem;color:var(--text2);white-space:nowrap">
+      <span id="drive-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text3);display:inline-block;flex-shrink:0"></span>
+      <span id="drive-label">Google Drive</span>
+    </div>
+    <button id="drive-btn" class="btn btn-ghost btn-sm" onclick="driveAuth()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Ligar</button>
+    <button id="drive-save-btn" class="btn btn-ghost btn-sm" onclick="driveSave()" style="font-size:0.7rem;padding:5px 12px;display:none;white-space:nowrap">💾 Guardar</button>
+    <button id="drive-load-btn" class="btn btn-ghost btn-sm" onclick="driveLoad()" style="font-size:0.7rem;padding:5px 12px;display:none;white-space:nowrap">☁ Carregar</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportBackup()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Exportar</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportCsv()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">CSV</button>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('import-file').click()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Importar</button>
+    <button class="btn btn-ghost btn-sm" onclick="changePassword()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Password</button>
+    <button class="btn btn-ghost btn-sm" onclick="lockApp()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Bloquear</button>
+    <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="importBackup(this.files[0])">
+  </div>
+</nav>
+
+<!-- DRIVE CONFIG MODAL -->
+<div id="drive-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center">
+  <div style="background:var(--s1);border:1px solid var(--border2);border-radius:var(--r);padding:36px;max-width:500px;width:90%;position:relative">
+    <button onclick="document.getElementById('drive-modal').style.display='none'" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--text2);font-size:1.2rem;cursor:pointer">×</button>
+    <div style="font-family:var(--font-serif);font-size:1.3rem;color:var(--gold);margin-bottom:6px">Configurar Google Drive</div>
+    <p style="font-size:0.8rem;color:var(--text2);margin-bottom:24px;line-height:1.6">Os seus dados ficam guardados num ficheiro <code style="color:var(--gold);background:var(--s3);padding:1px 6px;border-radius:4px">gestao-pessoal.json</code> no seu Google Drive e sincronizam entre computadores.</p>
+
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--r-sm);padding:16px;margin-bottom:20px;font-size:0.78rem;line-height:1.8;color:var(--text2)">
+      <div style="color:var(--gold);font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px">Como obter as credenciais (5 min)</div>
+      <b style="color:var(--text)">1.</b> Aceda a <a href="https://console.cloud.google.com" target="_blank" style="color:var(--blue)">console.cloud.google.com</a><br>
+      <b style="color:var(--text)">2.</b> Crie um projeto (ex: "Gestão Pessoal")<br>
+      <b style="color:var(--text)">3.</b> Ative a <b style="color:var(--text)">Google Drive API</b><br>
+      <b style="color:var(--text)">4.</b> Credenciais → Criar → <b style="color:var(--text)">ID de cliente OAuth 2.0</b> → Aplicação Web<br>
+      <b style="color:var(--text)">5.</b> Adicione <code style="color:var(--gold);background:var(--s3);padding:1px 5px;border-radius:3px">null</code> em origens autorizadas (para ficheiros locais)<br>
+      <b style="color:var(--text)">6.</b> Credenciais → Criar → <b style="color:var(--text)">Chave de API</b>
+    </div>
+
+    <div class="form-grid">
+      <div class="field">
+        <label>Client ID (OAuth 2.0)</label>
+        <input type="text" id="cfg-client-id" placeholder="xxxxx.apps.googleusercontent.com" style="font-size:0.78rem">
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <input type="text" id="cfg-api-key" placeholder="AIzaSy..." style="font-size:0.78rem">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="saveDriveConfig()">Guardar e Ligar ao Drive</button>
+    </div>
+    <p style="font-size:0.7rem;color:var(--text3);margin-top:14px;text-align:center">As credenciais ficam guardadas apenas no seu computador (localStorage).</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 1: FINANCEIRO -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="page active" id="page-financeiro">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:16px">
+    <div>
+      <h1 class="sec-title">Controlo <span>Financeiro</span></h1>
+      <p class="sec-sub">Receitas · Despesas · Orçamento</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div class="month-nav">
+        <button class="mnav-btn" onclick="changeMonth('fin',-1)">‹</button>
+        <span id="month-label-fin"></span>
+        <button class="mnav-btn" onclick="changeMonth('fin',1)">›</button>
+      </div>
+      <input class="search-input" type="text" id="fin-search" placeholder="Pesquisar…" oninput="renderFin()">
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi-card" style="--accent:var(--teal);--accent-bg:var(--teal-d)">
+      <label>Receitas</label>
+      <div class="val" id="kpi-income">0,00 €</div>
+      <div class="sub" id="kpi-income-vs">vs orçamento</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--red);--accent-bg:var(--red-d)">
+      <label>Despesas</label>
+      <div class="val" id="kpi-expense">0,00 €</div>
+      <div class="sub" id="kpi-expense-vs">vs orçamento</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--gold);--accent-bg:var(--gold-d)">
+      <label>Saldo</label>
+      <div class="val" id="kpi-balance">0,00 €</div>
+      <div class="sub" id="kpi-balance-pct"></div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--blue);--accent-bg:var(--blue-d)">
+      <label>Taxa Poupança</label>
+      <div class="val" id="kpi-savings">—</div>
+      <div class="sub">do rendimento</div>
+    </div>
+  </div>
+
+  <!-- PERIOD + CHARTS -->
+  <div class="period-tabs">
+    <button class="period-btn" onclick="setPeriod('fin','day',this)">Dia</button>
+    <button class="period-btn" onclick="setPeriod('fin','week',this)">Semana</button>
+    <button class="period-btn active" onclick="setPeriod('fin','month',this)">Mês</button>
+    <button class="period-btn" onclick="setPeriod('fin','quarter',this)">Trimestre</button>
+  </div>
+
+  <div class="three-col" style="margin-bottom:24px">
+    <div class="card" style="grid-column:span 2">
+      <div class="card-title"><span class="dot"></span>Evolução Receitas vs Despesas</div>
+      <canvas id="chart-fin-line" class="chart-canvas"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--red)"></span>Despesas por Categoria</div>
+      <canvas id="chart-fin-donut" width="160" height="160" style="display:block;margin:0 auto 16px"></canvas>
+      <div id="fin-legend" class="donut-legend"></div>
+    </div>
+  </div>
+
+  <!-- TWO COL: FORM + LIST -->
+  <div class="two-col">
+    <!-- FORM -->
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>Nova Transação</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Tipo</label>
+          <div class="type-toggle">
+            <button class="type-btn exp" id="fin-btn-exp" onclick="setFinType('expense')">↓ Despesa</button>
+            <button class="type-btn" id="fin-btn-inc" onclick="setFinType('income')">↑ Receita</button>
+          </div>
+        </div>
+        <div class="field"><label>Descrição</label><input type="text" id="fin-desc" placeholder="ex: Supermercado"></div>
+        <div class="form-row">
+          <div class="field"><label>Valor (€)</label><input type="number" id="fin-amount" placeholder="0,00" min="0.01" step="0.01"></div>
+          <div class="field"><label>Data</label><input type="date" id="fin-date"></div>
+        </div>
+        <div class="field">
+          <label>Categoria <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="showCatEditor('expense')">✏ Editar</button></label>
+          <select id="fin-cat"></select>
+        </div>
+        <div class="field"><label>Nota (opcional)</label><textarea id="fin-note" placeholder="Detalhes…" style="min-height:50px"></textarea></div>
+        <button class="btn btn-primary btn-full" id="fin-submit" onclick="addTransaction()">+ Adicionar</button>
+        <button class="btn btn-ghost btn-full" id="fin-cancel-edit" onclick="cancelEdit('transaction')" style="display:none">Cancelar edição</button>
+      </div>
+    </div>
+
+    <!-- LIST + BREAKDOWN -->
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>Transações</div>
+        <div class="tx-wrap" id="fin-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--red)"></span>Despesas vs Orçamento por Categoria</div>
+        <div class="bar-group" id="fin-cat-bars"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 2: TEMPO -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="page" id="page-tempo">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:16px">
+    <div>
+      <h1 class="sec-title">Controlo de <span>Tempo</span></h1>
+      <p class="sec-sub">Como invisto as minhas horas</p>
+    </div>
+    <div class="month-nav">
+      <button class="mnav-btn" onclick="changeMonth('time',-1)">‹</button>
+      <span id="month-label-time"></span>
+      <button class="mnav-btn" onclick="changeMonth('time',1)">›</button>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr);margin-bottom:28px">
+    <div class="kpi-card" style="--accent:var(--blue);--accent-bg:var(--blue-d)">
+      <label>Horas Registadas</label>
+      <div class="val" id="time-kpi-total">0h</div>
+      <div class="sub">este mês</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--teal);--accent-bg:var(--teal-d)">
+      <label>Família</label>
+      <div class="val" id="time-kpi-family">0h</div>
+      <div class="sub" id="time-kpi-family-pct">— do tempo</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--gold);--accent-bg:var(--gold-d)">
+      <label>Trabalho</label>
+      <div class="val" id="time-kpi-work">0h</div>
+      <div class="sub" id="time-kpi-work-pct">— do tempo</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--purple);--accent-bg:var(--purple-d)">
+      <label>Tempo Perdido</label>
+      <div class="val" id="time-kpi-lost">0h</div>
+      <div class="sub" id="time-kpi-lost-pct">— do tempo</div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <!-- FORM -->
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Registar Tempo</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Categoria Principal</label>
+          <select id="time-main-cat" onchange="renderTimeSubcats()">
+            <option value="familia">👨‍👩‍👧‍👦 Família</option>
+            <option value="trabalho">💼 Trabalho</option>
+            <option value="dormir">😴 Dormir</option>
+            <option value="desporto">🏃 Desporto</option>
+            <option value="ler">📖 Leitura</option>
+            <option value="perdido">⌛ Tempo Perdido</option>
+          </select>
+        </div>
+        <div class="field" id="time-subcat-field">
+          <label>Sub-categoria</label>
+          <select id="time-sub-cat"></select>
+        </div>
+        <div class="field"><label>Descrição</label><input type="text" id="time-desc" placeholder="ex: Passeio com a Diana"></div>
+        <div class="form-row">
+          <div class="field"><label>Data</label><input type="date" id="time-date"></div>
+          <div class="field"><label>Horas</label><input type="number" id="time-hours" placeholder="0.5" min="0.25" step="0.25"></div>
+        </div>
+        <div class="field"><label>Nota</label><textarea id="time-note" placeholder="O que fiz…" style="min-height:50px"></textarea></div>
+        <button class="btn btn-primary btn-full" id="time-submit" onclick="addTimeEntry()">+ Registar</button>
+        <button class="btn btn-ghost btn-full" id="time-cancel-edit" onclick="cancelEdit('time')" style="display:none">Cancelar edição</button>
+      </div>
+    </div>
+
+    <!-- VISUALS + LIST -->
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <!-- Donut circles -->
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Distribuição do Tempo</div>
+        <div class="time-circles" id="time-circles"></div>
+      </div>
+      <!-- Bars by subcat -->
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Detalhe por Sub-categoria</div>
+        <div class="bar-group" id="time-subcat-bars"></div>
+      </div>
+      <!-- List -->
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Registos</div>
+        <div class="tx-wrap" id="time-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 3: INVESTIMENTOS -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="page" id="page-investimentos">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:16px">
+    <div>
+      <h1 class="sec-title">Portfólio de <span>Investimentos</span></h1>
+      <p class="sec-sub">Ações · ETFs · Obrigações · Cripto · Imobiliário</p>
+    </div>
+  </div>
+
+  <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi-card" style="--accent:var(--teal);--accent-bg:var(--teal-d)">
+      <label>Valor Total</label>
+      <div class="val" id="inv-kpi-total">0,00 €</div>
+      <div class="sub">portfólio atual</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--gold);--accent-bg:var(--gold-d)">
+      <label>Capital Investido</label>
+      <div class="val" id="inv-kpi-invested">0,00 €</div>
+      <div class="sub">total investido</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--teal);--accent-bg:var(--teal-d)">
+      <label>Ganho/Perda</label>
+      <div class="val" id="inv-kpi-gain">0,00 €</div>
+      <div class="sub" id="inv-kpi-gain-pct">— %</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--blue);--accent-bg:var(--blue-d)">
+      <label>N.º de Posições</label>
+      <div class="val" id="inv-kpi-count">0</div>
+      <div class="sub">ativos</div>
+    </div>
+  </div>
+
+  <div class="two-col" style="margin-top:24px">
+    <!-- FORM -->
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Adicionar Posição</div>
+      <div class="form-grid">
+        <div class="field"><label>Nome do Ativo</label><input type="text" id="inv-name" placeholder="ex: Vanguard S&P500 ETF"></div>
+        <div class="form-row">
+          <div class="field"><label>Ticker / Código</label><input type="text" id="inv-ticker" placeholder="VUSA.L"></div>
+          <div class="field">
+            <label>Tipo</label>
+            <select id="inv-type">
+              <option value="ETF">📊 ETF</option>
+              <option value="Ação">📈 Ação</option>
+              <option value="Obrigação">📋 Obrigação</option>
+              <option value="Cripto">₿ Cripto</option>
+              <option value="Imobiliário">🏠 Imobiliário</option>
+              <option value="Outro">📦 Outro</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Qtd / Unidades</label><input type="number" id="inv-qty" placeholder="10" min="0.0001" step="0.0001"></div>
+          <div class="field"><label>Preço Compra (€)</label><input type="number" id="inv-buy-price" placeholder="100,00" min="0.01" step="0.01"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Preço Atual (€)</label><input type="number" id="inv-curr-price" placeholder="110,00" min="0.01" step="0.01"></div>
+          <div class="field"><label>Data Compra</label><input type="date" id="inv-date"></div>
+        </div>
+        <div class="field"><label>Nota</label><textarea id="inv-note" placeholder="Estratégia, broker…" style="min-height:50px"></textarea></div>
+        <button class="btn btn-primary btn-full" id="inv-submit" onclick="addInvestment()">+ Adicionar</button>
+        <button class="btn btn-ghost btn-full" id="inv-cancel-edit" onclick="cancelEdit('investment')" style="display:none">Cancelar edição</button>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <!-- Allocation chart -->
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Alocação por Tipo</div>
+        <div class="donut-wrap">
+          <canvas id="chart-inv-donut" width="140" height="140"></canvas>
+          <div class="donut-legend" id="inv-alloc-legend"></div>
+        </div>
+      </div>
+      <!-- Table -->
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Posições</div>
+        <div class="tx-wrap" id="inv-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 4: ORÇAMENTO -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="page" id="page-orcamento">
+  <div style="margin-bottom:8px">
+    <h1 class="sec-title">Planeador de <span>Orçamento</span></h1>
+    <p class="sec-sub">Define limites · Acompanha execução · Melhora hábitos</p>
+  </div>
+
+  <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi-card" style="--accent:var(--gold);--accent-bg:var(--gold-d)">
+      <label>Orçamento Total</label>
+      <div class="val" id="bud-total">0,00 €</div>
+      <div class="sub">definido</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--red);--accent-bg:var(--red-d)">
+      <label>Gasto</label>
+      <div class="val" id="bud-spent">0,00 €</div>
+      <div class="sub" id="bud-spent-pct">— %</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--teal);--accent-bg:var(--teal-d)">
+      <label>Disponível</label>
+      <div class="val" id="bud-available">0,00 €</div>
+      <div class="sub">este mês</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--blue);--accent-bg:var(--blue-d)">
+      <label>Categorias OK</label>
+      <div class="val" id="bud-cats-ok">—</div>
+      <div class="sub">dentro do limite</div>
+    </div>
+  </div>
+
+  <div class="two-col" style="margin-top:24px">
+    <!-- FORM -->
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--gold)"></span>Definir Orçamento</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Categoria</label>
+          <select id="bud-cat"></select>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Limite Mensal (€)</label><input type="number" id="bud-limit" placeholder="500,00" min="1" step="1"></div>
+          <div class="field"><label>Tipo</label>
+            <select id="bud-type">
+              <option value="expense">Despesa</option>
+              <option value="income">Receita</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="setBudget()">✓ Guardar Orçamento</button>
+      </div>
+
+      <div style="margin-top:24px">
+        <div class="card-title"><span class="dot" style="background:var(--gold)"></span>Gestão de Categorias</div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:8px">Categorias de Despesa</label>
+          <div class="cat-editor" id="cat-expense-editor"></div>
+          <div class="cat-add-row">
+            <input type="text" class="field" style="flex:1" id="new-exp-icon" placeholder="🛒" maxlength="2">
+            <input type="text" style="flex:3;background:var(--s2);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-size:0.85rem;padding:8px 12px;outline:none" id="new-exp-name" placeholder="Nova categoria">
+            <button class="btn btn-ghost btn-sm" onclick="addCategory('expense')">+</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:8px">Categorias de Receita</label>
+          <div class="cat-editor" id="cat-income-editor"></div>
+          <div class="cat-add-row">
+            <input type="text" class="field" style="flex:1" id="new-inc-icon" placeholder="💼" maxlength="2">
+            <input type="text" style="flex:3;background:var(--s2);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-size:0.85rem;padding:8px 12px;outline:none" id="new-inc-name" placeholder="Nova categoria">
+            <button class="btn btn-ghost btn-sm" onclick="addCategory('income')">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BUDGET TABLE -->
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--gold)"></span>Execução Orçamental — <span id="bud-month-label" style="color:var(--text2);font-weight:300"></span></div>
+      <div class="tx-wrap" id="bud-list"></div>
+      <div style="margin-top:20px">
+        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Regra Pessoal: 60/20/10/10</div>
+        <div class="bar-group" id="rule-bars"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 5: CRÉDITOS -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="page" id="page-creditos">
+  <div style="margin-bottom:8px">
+    <h1 class="sec-title">Gestão de <span>Créditos</span></h1>
+    <p class="sec-sub">Empréstimos · Prestações · Linha Temporal</p>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi-card" style="--accent:var(--red);--accent-bg:var(--red-d)">
+      <label>Dívida Total</label>
+      <div class="val" id="cred-kpi-total">0,00 €</div>
+      <div class="sub">valor em dívida</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--teal);--accent-bg:var(--teal-d)">
+      <label>Total Pago</label>
+      <div class="val" id="cred-kpi-paid">0,00 €</div>
+      <div class="sub">capital amortizado</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--gold);--accent-bg:var(--gold-d)">
+      <label>Prestação Mensal</label>
+      <div class="val" id="cred-kpi-monthly">0,00 €</div>
+      <div class="sub">total de encargos</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--blue);--accent-bg:var(--blue-d)">
+      <label>Créditos Ativos</label>
+      <div class="val" id="cred-kpi-count">0</div>
+      <div class="sub">em vigor</div>
+    </div>
+  </div>
+
+  <!-- TIMELINE -->
+  <div class="card" style="margin-bottom:24px">
+    <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Linha Temporal — Próximos 10 Anos</div>
+    <div id="cred-timeline" style="overflow-x:auto;padding-bottom:8px">
+      <canvas id="chart-timeline" height="130"></canvas>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <!-- FORM -->
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--red)"></span>Registar Crédito</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Tipo de Crédito</label>
+          <select id="cred-type">
+            <option value="Habitação">🏠 Habitação</option>
+            <option value="Automóvel">🚗 Automóvel</option>
+            <option value="Pessoal">👤 Pessoal</option>
+            <option value="Educação">📚 Educação</option>
+            <option value="Negócio">💼 Negócio</option>
+            <option value="Outro">📦 Outro</option>
+          </select>
+        </div>
+        <div class="field"><label>Descrição / Nome</label><input type="text" id="cred-name" placeholder="ex: Crédito Habitação BPI"></div>
+        <div class="form-row">
+          <div class="field"><label>Valor Total do Crédito (€)</label><input type="number" id="cred-total" placeholder="150000" min="1" step="0.01"></div>
+          <div class="field"><label>Valor Já Pago (€)</label><input type="number" id="cred-paid" placeholder="20000" min="0" step="0.01"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Prestação Mensal (€)</label><input type="number" id="cred-monthly" placeholder="650" min="1" step="0.01"></div>
+          <div class="field"><label>Nº Prestações em Falta</label><input type="number" id="cred-remaining" placeholder="240" min="1" step="1"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Data de Início</label><input type="date" id="cred-start"></div>
+          <div class="field"><label>Taxa de Juro (% anual)</label><input type="number" id="cred-rate" placeholder="3.5" min="0" step="0.01"></div>
+        </div>
+        <div class="field"><label>Notas</label><textarea id="cred-note" placeholder="Banco, condições especiais…" style="min-height:50px"></textarea></div>
+        <button class="btn btn-primary btn-full" id="cred-submit" onclick="addCredit()">+ Registar Crédito</button>
+        <button class="btn btn-ghost btn-full" id="cred-cancel-edit" onclick="cancelEdit('credit')" style="display:none">Cancelar edição</button>
+      </div>
+    </div>
+
+    <!-- CREDIT CARDS -->
+    <div style="display:flex;flex-direction:column;gap:16px" id="cred-cards">
+      <div class="empty"><div class="e-icon">◎</div>Nenhum crédito registado</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "Gestão Pessoal",
+  "short_name": "Gestão",
+  "description": "Painel privado para finanças, tempo, investimentos, orçamento e créditos.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "lang": "pt-PT",
+  "icons": [
+    {
+      "src": "src/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
