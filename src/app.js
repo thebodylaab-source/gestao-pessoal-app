@@ -86,9 +86,11 @@ window.addEventListener('load', () => {
 // STATE
 // ══════════════════════════════════════
 const STORAGE_KEY = 'gp_v3';
+const GUEST_STORAGE_KEY = `${STORAGE_KEY}:guest`;
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const SUPABASE_TABLE = 'personal_data';
+let currentStorageKey = GUEST_STORAGE_KEY;
 
 function createEmergencyState() {
   return {
@@ -133,6 +135,21 @@ const UI = {
   }
 };
 
+function createDefaultCategories() {
+  return {
+    expense: [
+      {icon:'ðŸ›’',name:'AlimentaÃ§Ã£o'},{icon:'ðŸš—',name:'Transporte'},{icon:'ðŸ ',name:'HabitaÃ§Ã£o'},
+      {icon:'ðŸ’Š',name:'SaÃºde'},{icon:'ðŸŽ¬',name:'Lazer'},{icon:'ðŸ‘•',name:'VestuÃ¡rio'},
+      {icon:'ðŸ“š',name:'EducaÃ§Ã£o'},{icon:'ðŸ’»',name:'Tecnologia'},{icon:'ðŸ½ï¸',name:'RestauraÃ§Ã£o'},
+      {icon:'ðŸ“¦',name:'Outros'}
+    ],
+    income: [
+      {icon:'ðŸ’¼',name:'SalÃ¡rio'},{icon:'ðŸ”§',name:'Freelance'},
+      {icon:'ðŸ“ˆ',name:'Investimentos'},{icon:'ðŸŽ',name:'Presente'},{icon:'ðŸ“¦',name:'Outros'}
+    ]
+  };
+}
+
 function normalizeState() {
   if (!S.emergency || typeof S.emergency !== 'object') S.emergency = createEmergencyState();
   S.emergency = { ...createEmergencyState(), ...S.emergency };
@@ -143,12 +160,55 @@ function normalizeState() {
   S.emergency.moves = Array.isArray(S.emergency.moves) ? S.emergency.moves : [];
 }
 
-function load() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) { const d = JSON.parse(saved); Object.assign(S, d); S.months = { fin: new Date(), time: new Date(), inv: new Date() }; }
-  } catch(e) {}
+function storageKeyForUser(userId) {
+  return userId ? `${STORAGE_KEY}:user:${userId}` : GUEST_STORAGE_KEY;
+}
+
+function setStorageUser(userId) {
+  currentStorageKey = storageKeyForUser(userId);
+}
+
+function resetState(data = {}) {
+  S.transactions = Array.isArray(data.transactions) ? data.transactions : [];
+  S.timeEntries = Array.isArray(data.timeEntries) ? data.timeEntries : [];
+  S.investments = Array.isArray(data.investments) ? data.investments : [];
+  S.budgets = Array.isArray(data.budgets) ? data.budgets : [];
+  S.credits = Array.isArray(data.credits) ? data.credits : [];
+  S.emergency = data.emergency && typeof data.emergency === 'object' ? data.emergency : createEmergencyState();
+  S.categories = data.categories && typeof data.categories === 'object' ? data.categories : createDefaultCategories();
+  S.finType = data.finType || 'expense';
+  S.periods = { fin: 'month', time: 'month', ...(data.periods || {}) };
+  S.months = { fin: new Date(), time: new Date(), inv: new Date() };
   normalizeState();
+}
+
+function migrateLegacyStorage() {
+  const legacy = localStorage.getItem(STORAGE_KEY);
+  if (legacy && !localStorage.getItem(GUEST_STORAGE_KEY)) {
+    localStorage.setItem(GUEST_STORAGE_KEY, legacy);
+  }
+}
+
+function loadLocalForUser(userId = null) {
+  setStorageUser(userId);
+  try {
+    const saved = localStorage.getItem(currentStorageKey);
+    resetState(saved ? JSON.parse(saved) : {});
+  } catch(e) {
+    resetState();
+  }
+}
+
+function switchLocalUser(userId = null, options = {}) {
+  const { keepCurrentIfMissing = false } = options;
+  const nextKey = storageKeyForUser(userId);
+  if (localStorage.getItem(nextKey)) {
+    loadLocalForUser(userId);
+    return;
+  }
+  setStorageUser(userId);
+  if (keepCurrentIfMissing) saveLocal();
+  else resetState();
 }
 
 function stateSnapshot() {
@@ -157,7 +217,7 @@ function stateSnapshot() {
 }
 
 function saveLocal() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(stateSnapshot()));
+  localStorage.setItem(currentStorageKey, JSON.stringify(stateSnapshot()));
 }
 
 function save() {
@@ -173,7 +233,8 @@ function queueDriveAutoSave() {
   }
 }
 
-load();
+migrateLegacyStorage();
+loadLocalForUser();
 
 // ══════════════════════════════════════
 // TABS
@@ -1462,7 +1523,7 @@ function exportBackup() {
   const payload = {
     ...stateSnapshot(),
     savedAt: new Date().toISOString(),
-    appVersion: '1.2.0'
+    appVersion: '1.3.0'
   };
   downloadFile(`gestao-pessoal-backup-${today()}.json`, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
   toast('Backup JSON exportado', 'var(--teal)');
@@ -1596,6 +1657,8 @@ async function cloudLogin() {
     const { data, error } = await CLOUD.client.auth.signInWithPassword(credentials);
     if (error) throw error;
     CLOUD.user = data.user;
+    switchLocalUser(CLOUD.user.id, { keepCurrentIfMissing: true });
+    renderAll();
     localStorage.setItem('gp_cloud_email', credentials.email);
     document.getElementById('cloud-modal').style.display = 'none';
     cloudSetStatus('ok');
@@ -1619,6 +1682,8 @@ async function cloudSignUp() {
     document.getElementById('cloud-modal').style.display = 'none';
     if (data.session && data.user) {
       CLOUD.user = data.user;
+      setStorageUser(CLOUD.user.id);
+      saveLocal();
       cloudSetStatus('ok');
       await cloudSave({ silent: true });
       toast('Conta criada e dados guardados na Cloud', 'var(--teal)');
@@ -1680,6 +1745,8 @@ async function cloudLogout() {
   if (!CLOUD.client) return;
   await CLOUD.client.auth.signOut();
   CLOUD.user = null;
+  loadLocalForUser();
+  renderAll();
   cloudSetStatus('ready');
   toast('Sessao Cloud terminada', 'var(--gold)');
 }
@@ -1697,7 +1764,7 @@ async function cloudSave(options = {}) {
     const payload = {
       ...stateSnapshot(),
       savedAt: new Date().toISOString(),
-      appVersion: '1.2.0'
+      appVersion: '1.3.0'
     };
     const { error } = await CLOUD.client
       .from(SUPABASE_TABLE)
@@ -1733,12 +1800,7 @@ async function cloudLoad(options = {}) {
     if (error) throw error;
     if (data?.data && Object.keys(data.data).length) {
       const snapshot = data.data;
-      ['transactions','timeEntries','investments','budgets','credits'].forEach(key => {
-        if (Array.isArray(snapshot[key])) S[key] = snapshot[key];
-      });
-      if (snapshot.emergency && typeof snapshot.emergency === 'object') S.emergency = snapshot.emergency;
-      if (snapshot.categories && typeof snapshot.categories === 'object') S.categories = snapshot.categories;
-      normalizeState();
+      resetState(snapshot);
       saveLocal();
       renderAll();
       cloudSetStatus('ok');
@@ -1780,7 +1842,11 @@ function initCloud() {
   CLOUD.client.auth.getSession().then(({ data }) => {
     CLOUD.user = data.session?.user || null;
     cloudSetStatus(CLOUD.user ? 'ok' : 'ready');
-    if (CLOUD.user) cloudLoad({ silent: true });
+    if (CLOUD.user) {
+      switchLocalUser(CLOUD.user.id, { keepCurrentIfMissing: true });
+      renderAll();
+      cloudLoad({ silent: true });
+    }
   });
   CLOUD.client.auth.onAuthStateChange((_event, session) => {
     const nextUser = session?.user || null;
@@ -1788,7 +1854,15 @@ function initCloud() {
     CLOUD.user = nextUser;
     cloudSetStatus(CLOUD.user ? 'ok' : 'ready');
     if (_event === 'PASSWORD_RECOVERY') finishCloudPasswordRecovery();
-    if (CLOUD.user && changedUser) cloudLoad({ silent: true });
+    if (CLOUD.user && changedUser) {
+      switchLocalUser(CLOUD.user.id, { keepCurrentIfMissing: true });
+      renderAll();
+      cloudLoad({ silent: true });
+    }
+    if (!CLOUD.user && changedUser) {
+      loadLocalForUser();
+      renderAll();
+    }
   });
 }
 
@@ -1944,14 +2018,7 @@ async function driveLoad() {
     });
     const data = typeof res.result === 'string' ? JSON.parse(res.result) : res.result;
     if (data && typeof data === 'object') {
-      if (data.transactions) S.transactions = data.transactions;
-      if (data.timeEntries)  S.timeEntries  = data.timeEntries;
-      if (data.investments)  S.investments  = data.investments;
-      if (data.budgets)      S.budgets      = data.budgets;
-      if (data.categories)   S.categories   = data.categories;
-      if (data.credits)      S.credits      = data.credits;
-      if (data.emergency)    S.emergency    = data.emergency;
-      normalizeState();
+      resetState(data);
       saveLocal(); // also update localStorage as cache without re-uploading immediately
       renderAll();
       driveSetStatus('ok');

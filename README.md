@@ -18,6 +18,7 @@ npm.cmd run build
 ## Cloud Supabase
 
 A app continua a guardar uma copia local no browser, mas quando fizer login no botao `Cloud`, sincroniza o estado completo com Supabase.
+Cada utilizador Cloud tem uma linha separada por `user_id` e uma cache local separada no browser, evitando mistura de dados entre contas.
 
 1. No Supabase, abra `SQL Editor`.
 2. Cole e execute o conteudo de `supabase/schema.sql`.
