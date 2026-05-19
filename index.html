@@ -41,6 +41,16 @@
   <button class="tab-btn" onclick="showTab('orcamento',this)">🎯 Orçamento</button>
   <button class="tab-btn" onclick="showTab('creditos',this)">🏦 Créditos</button>
   <div style="flex:1"></div>
+  <div id="cloud-status" style="display:flex;align-items:center;gap:10px;padding:0 8px">
+    <div id="cloud-indicator" style="display:flex;align-items:center;gap:7px;font-size:0.72rem;color:var(--text2);white-space:nowrap">
+      <span id="cloud-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text3);display:inline-block;flex-shrink:0"></span>
+      <span id="cloud-label">Cloud</span>
+    </div>
+    <button id="cloud-btn" class="btn btn-ghost btn-sm" onclick="cloudAuth()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Ligar</button>
+    <button id="cloud-save-btn" class="btn btn-ghost btn-sm" onclick="cloudSave()" style="font-size:0.7rem;padding:5px 12px;display:none;white-space:nowrap">Guardar</button>
+    <button id="cloud-load-btn" class="btn btn-ghost btn-sm" onclick="cloudLoad()" style="font-size:0.7rem;padding:5px 12px;display:none;white-space:nowrap">Carregar</button>
+    <button id="cloud-logout-btn" class="btn btn-ghost btn-sm" onclick="cloudLogout()" style="font-size:0.7rem;padding:5px 12px;display:none;white-space:nowrap">Sair</button>
+  </div>
   <div id="drive-status" style="display:flex;align-items:center;gap:10px;padding:0 8px">
     <div id="drive-indicator" style="display:flex;align-items:center;gap:7px;font-size:0.72rem;color:var(--text2);white-space:nowrap">
       <span id="drive-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text3);display:inline-block;flex-shrink:0"></span>
@@ -57,6 +67,29 @@
     <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="importBackup(this.files[0])">
   </div>
 </nav>
+
+<!-- CLOUD LOGIN MODAL -->
+<div id="cloud-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center">
+  <div style="background:var(--s1);border:1px solid var(--border2);border-radius:var(--r);padding:36px;max-width:440px;width:90%;position:relative">
+    <button onclick="document.getElementById('cloud-modal').style.display='none'" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--text2);font-size:1.2rem;cursor:pointer">×</button>
+    <div style="font-family:var(--font-serif);font-size:1.3rem;color:var(--gold);margin-bottom:6px">Ligar Cloud</div>
+    <p style="font-size:0.8rem;color:var(--text2);margin-bottom:24px;line-height:1.6">Os dados ficam guardados no Supabase e sincronizam entre dispositivos depois de iniciar sessão.</p>
+
+    <div class="form-grid">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="cloud-email" placeholder="email@exemplo.pt" autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="cloud-password" placeholder="Mínimo 6 caracteres" autocomplete="current-password" onkeydown="if(event.key==='Enter') cloudLogin()">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="cloudLogin()">Entrar</button>
+      <button class="btn btn-ghost btn-full" onclick="cloudSignUp()">Criar conta</button>
+    </div>
+    <p id="cloud-help" style="font-size:0.7rem;color:var(--text3);margin-top:14px;text-align:center">Usa o email e password que escolheres para esta app.</p>
+  </div>
+</div>
 
 <!-- DRIVE CONFIG MODAL -->
 <div id="drive-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center">

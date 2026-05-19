@@ -15,6 +15,23 @@ npm.cmd run dev
 npm.cmd run build
 ```
 
+## Cloud Supabase
+
+A app continua a guardar uma copia local no browser, mas quando fizer login no botao `Cloud`, sincroniza o estado completo com Supabase.
+
+1. No Supabase, abra `SQL Editor`.
+2. Cole e execute o conteudo de `supabase/schema.sql`.
+3. Em `Authentication > Providers`, confirme que `Email` esta ativo.
+4. Em `Authentication > URL Configuration`, adicione o URL de producao da Vercel nos redirects permitidos, se o Supabase pedir.
+5. No Vercel, configure:
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+O ficheiro `.env.local` pode ser usado em desenvolvimento, mas nao deve ser enviado para GitHub.
+
 ## Deploy
 
 O projeto está pronto para Vercel como site estático/Vite.

@@ -4,5 +4,8 @@ dist/
 backups/
 *.log
 test-output/
+.env
+.env.local
+.env.*.local
 
 .vercel

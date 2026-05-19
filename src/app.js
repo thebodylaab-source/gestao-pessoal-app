@@ -1,3 +1,5 @@
+import { createClient } from '@supabase/supabase-js';
+
 // --- migrated inline script 1 ---
 const PASSWORD_HASH_KEY = 'gp_password_sha256';
 const DEFAULT_PASSWORD_HASH = '0aef600f16c3719b3f25bca35e5768f9d239c419ed468e0097e6f76976a74e56';
@@ -84,6 +86,9 @@ window.addEventListener('load', () => {
 // STATE
 // ══════════════════════════════════════
 const STORAGE_KEY = 'gp_v3';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const SUPABASE_TABLE = 'personal_data';
 
 const S = {
   transactions: [],
@@ -135,6 +140,7 @@ function saveLocal() {
 
 function save() {
   saveLocal();
+  queueCloudAutoSave();
   queueDriveAutoSave();
 }
 
@@ -1331,6 +1337,7 @@ function applyImportedData(data) {
   });
   if (data.categories && typeof data.categories === 'object') S.categories = data.categories;
   saveLocal();
+  queueCloudAutoSave();
   renderAll();
 }
 
@@ -1354,6 +1361,220 @@ function importBackup(file) {
 }
 
 // ══════════════════════════════════════
+// CLOUD SYNC (SUPABASE)
+const CLOUD = {
+  client: null,
+  ready: false,
+  user: null,
+  syncTimer: null,
+  busy: false
+};
+
+function cloudSetStatus(state) {
+  const dot = document.getElementById('cloud-dot');
+  const label = document.getElementById('cloud-label');
+  const btn = document.getElementById('cloud-btn');
+  const saveB = document.getElementById('cloud-save-btn');
+  const loadB = document.getElementById('cloud-load-btn');
+  const logoutB = document.getElementById('cloud-logout-btn');
+  const colors = { off:'var(--text3)', ready:'var(--gold)', ok:'var(--teal)', error:'var(--red)', syncing:'var(--blue)' };
+  const labels = { off:'Cloud', ready:'Cloud pronta', ok:'Cloud ligada', error:'Erro Cloud', syncing:'A sincronizar...' };
+  if (dot) dot.style.background = colors[state] || colors.off;
+  if (label) label.textContent = labels[state] || 'Cloud';
+  if (btn) {
+    btn.style.display = CLOUD.user ? 'none' : 'block';
+    btn.textContent = CLOUD.ready ? 'Ligar' : 'Configurar';
+  }
+  if (saveB) saveB.style.display = CLOUD.user ? 'block' : 'none';
+  if (loadB) loadB.style.display = CLOUD.user ? 'block' : 'none';
+  if (logoutB) logoutB.style.display = CLOUD.user ? 'block' : 'none';
+}
+
+function cloudAuth() {
+  if (!CLOUD.ready) {
+    toast('Supabase ainda nao esta configurado no ambiente', 'var(--red)');
+    return;
+  }
+  const email = document.getElementById('cloud-email');
+  const password = document.getElementById('cloud-password');
+  if (email) email.value = localStorage.getItem('gp_cloud_email') || '';
+  if (password) password.value = '';
+  document.getElementById('cloud-modal').style.display = 'flex';
+  setTimeout(() => (email?.value ? password : email)?.focus(), 50);
+}
+
+function cloudCredentials() {
+  const email = document.getElementById('cloud-email')?.value.trim();
+  const password = document.getElementById('cloud-password')?.value;
+  if (!email || !password) {
+    toast('Preencha email e password', 'var(--red)');
+    return null;
+  }
+  if (password.length < 6) {
+    toast('A password da Cloud precisa de pelo menos 6 caracteres', 'var(--red)');
+    return null;
+  }
+  return { email, password };
+}
+
+async function cloudLogin() {
+  if (!CLOUD.client) return cloudAuth();
+  const credentials = cloudCredentials();
+  if (!credentials) return;
+  cloudSetStatus('syncing');
+  try {
+    const { data, error } = await CLOUD.client.auth.signInWithPassword(credentials);
+    if (error) throw error;
+    CLOUD.user = data.user;
+    localStorage.setItem('gp_cloud_email', credentials.email);
+    document.getElementById('cloud-modal').style.display = 'none';
+    cloudSetStatus('ok');
+    await cloudLoad({ silent: true });
+    toast('Cloud ligada', 'var(--teal)');
+  } catch (e) {
+    cloudSetStatus('error');
+    toast('Erro no login Cloud: ' + e.message, 'var(--red)');
+  }
+}
+
+async function cloudSignUp() {
+  if (!CLOUD.client) return cloudAuth();
+  const credentials = cloudCredentials();
+  if (!credentials) return;
+  cloudSetStatus('syncing');
+  try {
+    const { data, error } = await CLOUD.client.auth.signUp(credentials);
+    if (error) throw error;
+    localStorage.setItem('gp_cloud_email', credentials.email);
+    document.getElementById('cloud-modal').style.display = 'none';
+    if (data.session && data.user) {
+      CLOUD.user = data.user;
+      cloudSetStatus('ok');
+      await cloudSave({ silent: true });
+      toast('Conta criada e dados guardados na Cloud', 'var(--teal)');
+    } else {
+      cloudSetStatus('ready');
+      toast('Conta criada. Confirme o email e depois entre.', 'var(--gold)');
+    }
+  } catch (e) {
+    cloudSetStatus('error');
+    toast('Erro ao criar conta: ' + e.message, 'var(--red)');
+  }
+}
+
+async function cloudLogout() {
+  if (!CLOUD.client) return;
+  await CLOUD.client.auth.signOut();
+  CLOUD.user = null;
+  cloudSetStatus('ready');
+  toast('Sessao Cloud terminada', 'var(--gold)');
+}
+
+async function cloudSave(options = {}) {
+  const { silent = false } = options;
+  if (!CLOUD.client || !CLOUD.user) {
+    if (!silent) toast('Cloud nao ligada', 'var(--red)');
+    return;
+  }
+  if (CLOUD.busy) return;
+  CLOUD.busy = true;
+  cloudSetStatus('syncing');
+  try {
+    const payload = {
+      ...stateSnapshot(),
+      savedAt: new Date().toISOString(),
+      appVersion: '1.1.0'
+    };
+    const { error } = await CLOUD.client
+      .from(SUPABASE_TABLE)
+      .upsert({
+        user_id: CLOUD.user.id,
+        data: payload,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+    if (error) throw error;
+    cloudSetStatus('ok');
+    if (!silent) toast('Guardado na Cloud', 'var(--teal)');
+  } catch (e) {
+    cloudSetStatus('error');
+    if (!silent) toast('Erro ao guardar na Cloud: ' + e.message, 'var(--red)');
+  } finally {
+    CLOUD.busy = false;
+  }
+}
+
+async function cloudLoad(options = {}) {
+  const { silent = false } = options;
+  if (!CLOUD.client || !CLOUD.user) {
+    if (!silent) toast('Cloud nao ligada', 'var(--red)');
+    return;
+  }
+  cloudSetStatus('syncing');
+  try {
+    const { data, error } = await CLOUD.client
+      .from(SUPABASE_TABLE)
+      .select('data,updated_at')
+      .eq('user_id', CLOUD.user.id)
+      .maybeSingle();
+    if (error) throw error;
+    if (data?.data && Object.keys(data.data).length) {
+      const snapshot = data.data;
+      ['transactions','timeEntries','investments','budgets','credits'].forEach(key => {
+        if (Array.isArray(snapshot[key])) S[key] = snapshot[key];
+      });
+      if (snapshot.categories && typeof snapshot.categories === 'object') S.categories = snapshot.categories;
+      saveLocal();
+      renderAll();
+      cloudSetStatus('ok');
+      if (!silent) {
+        const when = data.updated_at ? new Date(data.updated_at).toLocaleString('pt-PT') : '?';
+        toast(`Dados carregados da Cloud (${when})`, 'var(--teal)');
+      }
+    } else {
+      await cloudSave({ silent: true });
+      cloudSetStatus('ok');
+      if (!silent) toast('Primeira copia guardada na Cloud', 'var(--teal)');
+    }
+  } catch (e) {
+    cloudSetStatus('error');
+    if (!silent) toast('Erro ao carregar Cloud: ' + e.message, 'var(--red)');
+  }
+}
+
+function queueCloudAutoSave() {
+  if (!CLOUD.user) return;
+  clearTimeout(CLOUD.syncTimer);
+  CLOUD.syncTimer = setTimeout(() => cloudSave({ silent: true }), 1500);
+}
+
+function initCloud() {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    cloudSetStatus('off');
+    return;
+  }
+  CLOUD.client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
+  CLOUD.ready = true;
+  cloudSetStatus('ready');
+  CLOUD.client.auth.getSession().then(({ data }) => {
+    CLOUD.user = data.session?.user || null;
+    cloudSetStatus(CLOUD.user ? 'ok' : 'ready');
+    if (CLOUD.user) cloudLoad({ silent: true });
+  });
+  CLOUD.client.auth.onAuthStateChange((_event, session) => {
+    const nextUser = session?.user || null;
+    const changedUser = nextUser?.id !== CLOUD.user?.id;
+    CLOUD.user = nextUser;
+    cloudSetStatus(CLOUD.user ? 'ok' : 'ready');
+    if (CLOUD.user && changedUser) cloudLoad({ silent: true });
+  });
+}
+
 // GOOGLE DRIVE SYNC
 // ══════════════════════════════════════
 const DRIVE = {
@@ -1543,6 +1764,7 @@ window.addEventListener('load', () => {
 // ══════════════════════════════════════
 // INIT
 // ══════════════════════════════════════
+initCloud();
 document.getElementById('fin-date').value = today();
 document.getElementById('time-date').value = today();
 document.getElementById('inv-date').value = today();
@@ -1576,6 +1798,12 @@ Object.assign(window, {
   changeMonth,
   changePassword,
   checkPassword,
+  cloudAuth,
+  cloudLoad,
+  cloudLogin,
+  cloudLogout,
+  cloudSave,
+  cloudSignUp,
   deleteBudget,
   deleteCredit,
   deleteInvestment,
