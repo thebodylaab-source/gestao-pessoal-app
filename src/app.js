@@ -477,7 +477,7 @@ function renderFin() {
       return `<div class="tx-row" style="grid-template-columns:34px 1fr auto auto">
         <div class="tx-icon ${t.type}" style="background:${t.type==='expense'?'var(--red-d)':'var(--teal-d)'}">${getCatIcon(t.type, t.cat)}</div>
         <div><div class="tx-desc">${esc(t.desc)}</div>
-        <div class="tx-meta"><span>${fmtDate(t.date)}</span><span class="tag">${esc(t.cat)}</span>${budTag}${t.note?`<span style="color:var(--text3);font-size:0.65rem">📝 ${esc(t.note.slice(0,30))}</span>`:''}</div></div>
+        <div class="tx-meta"><span>${fmtDate(t.date)}</span><span class="tag">${esc(t.cat)}</span>${budTag}${t.note?`<span style="color:var(--text3);font-size:0.72rem">📝 ${esc(t.note.slice(0,30))}</span>`:''}</div></div>
         <div class="mono ${t.type==='expense'?'c-red':'c-teal'}">${t.type==='expense'?'−':'+'}${fmt(t.amount)}</div>
         <div class="row-actions">
           <button class="btn btn-ghost btn-sm" onclick="editTransaction('${t.id}')" title="Editar">✎</button>
@@ -635,7 +635,7 @@ function renderTime() {
       <div class="tx-icon" style="background:${info.color || 'var(--blue)'}22">${info.label?.slice(0,2) || '⏱'}</div>
       <div>
         <div class="tx-desc">${e.desc ? esc(e.desc) : esc(e.subCat)}</div>
-        <div class="tx-meta"><span>${fmtDate(e.date)}</span><span class="tag" style="background:${info.color||'var(--blue)'}22;color:${info.color||'var(--blue)'}">${esc(e.subCat)}</span>${e.note?`<span style="color:var(--text3);font-size:0.65rem">📝 ${esc(e.note.slice(0,30))}</span>`:''}</div>
+        <div class="tx-meta"><span>${fmtDate(e.date)}</span><span class="tag" style="background:${info.color||'var(--blue)'}22;color:${info.color||'var(--blue)'}">${esc(e.subCat)}</span>${e.note?`<span style="color:var(--text3);font-size:0.72rem">📝 ${esc(e.note.slice(0,30))}</span>`:''}</div>
       </div>
       <div class="mono" style="color:${info.color || 'var(--blue)'}">${fmtH(e.hours)}</div>
       <div class="row-actions">
@@ -752,16 +752,16 @@ function renderInv() {
           <div class="inv-ticker">${i.ticker ? esc(i.ticker) + ' · ' : ''}${esc(i.type)} · ${weight}% port. · ${i.qty} un.</div>
         </div>
         <div style="text-align:right">
-          <div class="mono" style="font-size:0.82rem">${fmt(i.currPrice)}</div>
-          <div style="font-size:0.68rem;color:var(--text2)">compra: ${fmt(i.buyPrice)}</div>
+          <div class="mono" style="font-size:0.98rem">${fmt(i.currPrice)}</div>
+          <div style="font-size:0.76rem;color:var(--text2)">compra: ${fmt(i.buyPrice)}</div>
         </div>
         <div style="text-align:right">
           <div class="mono">${fmt(currVal)}</div>
-          <div style="font-size:0.68rem;color:var(--text2)">${fmt(buyVal)}</div>
+          <div style="font-size:0.76rem;color:var(--text2)">${fmt(buyVal)}</div>
         </div>
         <div style="text-align:right">
           <div class="mono ${g>=0?'gain-pos':'gain-neg'}">${g>=0?'+':''}${fmt(g)}</div>
-          <div style="font-size:0.68rem;color:${col}">${gPct}%</div>
+          <div style="font-size:0.76rem;color:${col}">${gPct}%</div>
         </div>
         <div class="row-actions" style="flex-direction:column;gap:4px">
           <button class="btn btn-ghost btn-sm" onclick="updateInvPrice('${i.id}')" title="Atualizar preço">↻</button>
@@ -898,7 +898,7 @@ function renderEmergency() {
         <div class="tx-icon" style="background:${isIn ? 'var(--teal-d)' : 'var(--red-d)'}">${isIn ? '+' : '&minus;'}</div>
         <div>
           <div class="tx-desc">${isIn ? 'Entrada na reserva' : 'Saída da reserva'}</div>
-          <div class="tx-meta"><span>${fmtDate(m.date)}</span>${m.note ? `<span style="color:var(--text3);font-size:0.65rem">${esc(m.note.slice(0,40))}</span>` : ''}</div>
+          <div class="tx-meta"><span>${fmtDate(m.date)}</span>${m.note ? `<span style="color:var(--text3);font-size:0.72rem">${esc(m.note.slice(0,40))}</span>` : ''}</div>
         </div>
         <div class="mono ${isIn ? 'c-teal' : 'c-red'}">${isIn ? '+' : '&minus;'}${fmt(m.amount)}</div>
         <div class="row-actions"><button class="btn btn-danger btn-sm" onclick="deleteEmergencyMove('${m.id}')" title="Eliminar">&times;</button></div>
@@ -966,16 +966,16 @@ function renderBudget() {
       const tag = cls === 'ok' ? 'budget-ok' : cls === 'warn' ? 'budget-warn' : 'budget-over';
       const tagLabel = cls === 'ok' ? 'OK' : cls === 'warn' ? 'Atenção' : 'Excedido';
       return `<div class="budget-row">
-        <div style="font-size:0.82rem;color:var(--text)">
+        <div style="font-size:0.94rem;color:var(--text)">
           ${getCatIcon(b.type, b.cat)} ${esc(b.cat)}
-          <div style="font-size:0.65rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em">${b.type === 'expense' ? 'despesa' : 'receita'}</div>
+          <div style="font-size:0.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em">${b.type === 'expense' ? 'despesa' : 'receita'}</div>
         </div>
         <div>
           <div class="budget-track"><div class="budget-fill ${cls}" style="width:${pctVal}%"></div></div>
-          <div style="font-size:0.65rem;color:var(--text3);margin-top:4px">${pctVal}% utilizado</div>
+          <div style="font-size:0.72rem;color:var(--text3);margin-top:4px">${pctVal}% utilizado</div>
         </div>
-        <div class="mono" style="font-size:0.8rem;text-align:right;color:var(--text)">${fmt(spent)}</div>
-        <div class="mono" style="font-size:0.75rem;text-align:right;color:var(--text2)">${fmt(b.limit)}</div>
+        <div class="mono" style="font-size:0.96rem;text-align:right;color:var(--text)">${fmt(spent)}</div>
+        <div class="mono" style="font-size:0.9rem;text-align:right;color:var(--text2)">${fmt(b.limit)}</div>
         <div style="display:flex;align-items:center;justify-content:center;gap:4px">
           <span class="tag ${tag}">${tagLabel}</span>
           <button class="btn btn-ghost btn-sm" onclick="editBudget('${jsStr(b.cat)}','${b.type}')" title="Editar">✎</button>
@@ -1020,15 +1020,15 @@ function renderBudget() {
       const over = r.val > r.target;
       const diff = r.val - r.target;
       const diffLabel = diff === 0 ? '' : over
-        ? `<span style="color:var(--red);font-size:0.65rem;margin-left:6px">+${fmt(diff)} acima</span>`
-        : `<span style="color:var(--teal);font-size:0.65rem;margin-left:6px">${fmt(Math.abs(diff))} livre</span>`;
+        ? `<span style="color:var(--red);font-size:0.72rem;margin-left:6px">+${fmt(diff)} acima</span>`
+        : `<span style="color:var(--teal);font-size:0.72rem;margin-left:6px">${fmt(Math.abs(diff))} livre</span>`;
       return `<div class="bar-row" style="margin-bottom:6px">
         <div class="bar-label" style="width:120px">${r.label}</div>
         <div style="flex:1">
           <div class="bar-track"><div class="bar-fill" style="width:${barW}%;background:${over?'var(--red)':r.color}"></div></div>
-          <div style="font-size:0.65rem;color:var(--text3);margin-top:3px">${income>0?((r.val/income)*100).toFixed(1):'0'}% do rendimento</div>
+          <div style="font-size:0.72rem;color:var(--text3);margin-top:3px">${income>0?((r.val/income)*100).toFixed(1):'0'}% do rendimento</div>
         </div>
-        <div style="font-family:var(--font-mono);font-size:0.73rem;color:var(--text);min-width:160px;text-align:right">${fmt(r.val)} / ${fmt(r.target)}${diffLabel}</div>
+        <div style="font-family:var(--font-mono);font-size:0.86rem;color:var(--text);min-width:180px;text-align:right">${fmt(r.val)} / ${fmt(r.target)}${diffLabel}</div>
       </div>`;
     }).join('');
   } else if (ruleBars) {
@@ -1128,12 +1128,12 @@ function drawLineChart(canvasId, transactions) {
   for (let i=0;i<=4;i++) {
     const y2 = pad.t + chartH - (i/4) * chartH;
     ctx.beginPath(); ctx.moveTo(pad.l, y2); ctx.lineTo(W - pad.r, y2); ctx.stroke();
-    ctx.fillStyle = '#4a4858'; ctx.font = '10px Courier New,monospace';
+    ctx.fillStyle = '#4a4858'; ctx.font = '11px Courier New,monospace';
     ctx.fillText(Math.round((i/4)*maxVal) + '€', 4, y2 + 4);
   }
 
   // X labels
-  ctx.fillStyle = '#4a4858'; ctx.font = '10px Courier New,monospace';
+  ctx.fillStyle = '#4a4858'; ctx.font = '11px Courier New,monospace';
   labels.forEach((lbl, i) => {
     const x2 = pad.l + (i / (labels.length-1||1)) * chartW;
     ctx.fillText(lbl, x2 - 12, H - 8);
@@ -1169,7 +1169,7 @@ function drawLineChart(canvasId, transactions) {
 
   // Legend
   ctx.fillStyle = '#3dbf9b'; ctx.fillRect(W-100, 10, 10, 3);
-  ctx.fillStyle = '#7a7888'; ctx.font = '10px Arial,sans-serif'; ctx.fillText('Receitas', W-86, 14);
+  ctx.fillStyle = '#7a7888'; ctx.font = '11px Arial,sans-serif'; ctx.fillText('Receitas', W-86, 14);
   ctx.fillStyle = '#e05c5c'; ctx.fillRect(W-100, 22, 10, 3);
   ctx.fillStyle = '#7a7888'; ctx.fillText('Despesas', W-86, 26);
 }
@@ -1291,7 +1291,7 @@ function renderCredits() {
           <div class="cred-bar-track"><div class="cred-bar-fill" style="width:${pctPaid.toFixed(1)}%;background:linear-gradient(90deg,${color}88,${color})"></div></div>
         </div>
         <div class="cred-end-date">Liquidação prevista: <span>${endStr}</span></div>
-        ${c.note ? `<div style="font-size:0.72rem;color:var(--text2);border-top:1px solid var(--border);padding-top:8px;margin-top:4px">📝 ${esc(c.note)}</div>` : ''}
+        ${c.note ? `<div style="font-size:0.8rem;color:var(--text2);border-top:1px solid var(--border);padding-top:8px;margin-top:4px">📝 ${esc(c.note)}</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -1332,7 +1332,7 @@ function drawCreditTimeline() {
 
   // ── year ticks ──
   ctx.fillStyle = '#4a4858';
-  ctx.font = '10px Courier New,monospace';
+  ctx.font = '11px Courier New,monospace';
   ctx.textAlign = 'center';
   for (let y = now.getFullYear(); y <= now.getFullYear() + 10; y++) {
     const d = new Date(y, 0, 1);
@@ -1351,7 +1351,7 @@ function drawCreditTimeline() {
   ctx.beginPath(); ctx.moveTo(nowX, pad.t); ctx.lineTo(nowX, trackY + trackH + 4); ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle = '#d4a843';
-  ctx.font = '9px Courier New,monospace';
+  ctx.font = '10px Courier New,monospace';
   ctx.textAlign = 'center';
   ctx.fillText('HOJE', nowX, pad.t - 4);
 
@@ -1398,7 +1398,7 @@ function drawCreditTimeline() {
 
     // label
     ctx.fillStyle = '#e8e6f0';
-    ctx.font = '10px Arial,sans-serif';
+    ctx.font = '11px Arial,sans-serif';
     ctx.textAlign = 'left';
     const labelX = sx + 8;
     ctx.fillText(`${CRED_ICONS[c.type]||''} ${c.name.slice(0,22)}`, labelX, y2 + laneH/2 + 3.5);
@@ -1407,7 +1407,7 @@ function drawCreditTimeline() {
     if (endD) {
       const eStr = endD.toLocaleDateString('pt-PT', { month:'short', year:'2-digit' });
       ctx.fillStyle = color;
-      ctx.font = '9px Courier New,monospace';
+      ctx.font = '10px Courier New,monospace';
       ctx.textAlign = 'left';
       ctx.fillText(eStr, Math.min(ex + 6, W - 60), y2 + laneH/2 + 3.5);
     }

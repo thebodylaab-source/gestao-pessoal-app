@@ -36,7 +36,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .nav{position:sticky;top:0;z-index:100;background:rgba(10,10,15,0.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0;padding:0 32px;overflow-x:auto}
 .nav-logo{font-family:var(--font-serif);font-size:1.05rem;color:var(--gold);padding:18px 24px 18px 0;border-right:1px solid var(--border);margin-right:24px;white-space:nowrap;letter-spacing:0.02em}
 .nav-logo span{font-style:italic}
-.tab-btn{padding:18px 20px;font-family:var(--font-sans);font-size:0.8rem;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--text2);background:none;border:none;cursor:pointer;position:relative;transition:color 0.2s;white-space:nowrap}
+.tab-btn{padding:18px 20px;font-family:var(--font-sans);font-size:0.84rem;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--text2);background:none;border:none;cursor:pointer;position:relative;transition:color 0.2s;white-space:nowrap}
 .tab-btn::after{content:'';position:absolute;bottom:0;left:50%;right:50%;height:2px;background:var(--gold);transition:left 0.25s,right 0.25s;border-radius:2px 2px 0 0}
 .tab-btn.active{color:var(--text)}
 .tab-btn.active::after{left:0;right:0}
@@ -48,35 +48,35 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
 /* ── SECTION TITLE ── */
-.sec-title{font-family:var(--font-serif);font-size:1.8rem;font-weight:400;color:var(--text);letter-spacing:-0.02em;margin-bottom:4px}
+.sec-title{font-family:var(--font-serif);font-size:2rem;font-weight:400;color:var(--text);letter-spacing:-0.02em;margin-bottom:4px}
 .sec-title span{color:var(--gold);font-style:italic}
 .sec-sub{font-size:0.78rem;color:var(--text2);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:32px}
 
 /* ── CARDS ── */
 .card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:24px}
-.card-title{font-size:0.72rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text2);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.card-title{font-size:0.78rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text2);margin-bottom:16px;display:flex;align-items:center;gap:8px}
 .card-title .dot{width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0}
 
 /* ── KPI STRIP ── */
 .kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
 .kpi-card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:20px 24px;position:relative;overflow:hidden;transition:border-color 0.2s}
 .kpi-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,var(--accent-bg,transparent) 0%,transparent 60%);pointer-events:none}
-.kpi-card label{font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:10px}
-.kpi-card .val{font-family:var(--font-serif);font-size:1.7rem;font-weight:400;line-height:1;color:var(--accent,var(--text))}
-.kpi-card .sub{font-size:0.72rem;color:var(--text3);margin-top:6px;font-family:var(--font-mono)}
+.kpi-card label{font-size:0.72rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:10px}
+.kpi-card .val{font-family:var(--font-serif);font-size:2.08rem;font-weight:400;line-height:1.05;color:var(--accent,var(--text))}
+.kpi-card .sub{font-size:0.78rem;color:var(--text3);margin-top:7px;font-family:var(--font-mono)}
 
 /* ── FORM ELEMENTS ── */
 .form-grid{display:grid;gap:14px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-.field label{display:block;font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);margin-bottom:7px}
-.field input,.field select,.field textarea{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font-sans);font-size:0.88rem;font-weight:300;padding:10px 13px;outline:none;transition:border-color 0.2s;-webkit-appearance:none}
+.field label{display:block;font-size:0.76rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);margin-bottom:7px}
+.field input,.field select,.field textarea{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font-sans);font-size:0.96rem;font-weight:300;padding:10px 13px;outline:none;transition:border-color 0.2s;-webkit-appearance:none}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold)}
 .field select option{background:var(--s2)}
 .field textarea{resize:vertical;min-height:70px}
 
 /* ── BUTTONS ── */
-.btn{padding:11px 22px;border-radius:var(--r-sm);border:none;font-family:var(--font-sans);font-size:0.82rem;font-weight:500;letter-spacing:0.06em;cursor:pointer;transition:all 0.18s;text-transform:uppercase}
+.btn{padding:11px 22px;border-radius:var(--r-sm);border:none;font-family:var(--font-sans);font-size:0.88rem;font-weight:500;letter-spacing:0.06em;cursor:pointer;transition:all 0.18s;text-transform:uppercase}
 .btn-primary{background:var(--gold);color:#0a0a0f}
 .btn-primary:hover{background:var(--gold-l)}
 .btn-primary:active{transform:scale(0.97)}
@@ -84,7 +84,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .btn-ghost:hover{border-color:var(--gold);color:var(--gold)}
 .btn-danger{background:none;border:1px solid transparent;color:var(--text3)}
 .btn-danger:hover{color:var(--red);border-color:var(--red-d)}
-.btn-sm{padding:6px 12px;font-size:0.72rem}
+.btn-sm{padding:6px 12px;font-size:0.76rem}
 .btn-full{width:100%;margin-top:4px}
 
 /* ── TYPE TOGGLE ── */
@@ -104,34 +104,34 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .tx-row:hover{background:var(--s2)}
 @keyframes slidein{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
 .tx-icon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
-.tx-desc{font-size:0.875rem;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tx-meta{font-size:0.68rem;color:var(--text2);margin-top:2px;font-family:var(--font-mono);display:flex;gap:8px;align-items:center}
+.tx-desc{font-size:0.96rem;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tx-meta{font-size:0.74rem;color:var(--text2);margin-top:3px;font-family:var(--font-mono);display:flex;gap:8px;align-items:center}
 .row-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px}
 .tag{background:var(--gold-d);color:var(--gold);border-radius:4px;padding:1px 7px;font-size:0.63rem;letter-spacing:0.07em;text-transform:uppercase}
 .tag.budget-ok{background:var(--teal-d);color:var(--teal)}
 .tag.budget-warn{background:rgba(212,168,67,0.12);color:var(--gold)}
 .tag.budget-over{background:var(--red-d);color:var(--red)}
-.mono{font-family:var(--font-mono);font-size:0.88rem;font-weight:500}
+.mono{font-family:var(--font-mono);font-size:1.02rem;font-weight:600}
 .c-red{color:var(--red)}.c-teal{color:var(--teal)}.c-gold{color:var(--gold)}.c-blue{color:var(--blue)}.c-purple{color:var(--purple)}
 
 /* ── CHART BAR ── */
 .reserve-progress{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
-.reserve-ring{width:118px;height:118px;border-radius:50%;border:10px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--font-serif);font-size:1.7rem;color:var(--gold);background:var(--s2);box-shadow:inset 0 0 0 1px var(--border2);flex-shrink:0}
-#res-plan .bar-val{width:130px;white-space:nowrap;font-size:0.7rem}
+.reserve-ring{width:126px;height:126px;border-radius:50%;border:10px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--font-serif);font-size:1.95rem;color:var(--gold);background:var(--s2);box-shadow:inset 0 0 0 1px var(--border2);flex-shrink:0}
+#res-plan .bar-val{width:150px;white-space:nowrap;font-size:0.82rem}
 .bar-group{display:flex;flex-direction:column;gap:10px}
 .bar-row{display:flex;align-items:center;gap:12px}
-.bar-label{font-size:0.73rem;color:var(--text2);width:110px;flex-shrink:0;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+.bar-label{font-size:0.8rem;color:var(--text2);width:118px;flex-shrink:0;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
 .bar-track{flex:1;height:6px;background:var(--s3);border-radius:3px;overflow:hidden}
 .bar-fill{height:100%;border-radius:3px;transition:width 0.6s ease}
-.bar-val{font-family:var(--font-mono);font-size:0.73rem;color:var(--text);width:80px;text-align:right;flex-shrink:0}
+.bar-val{font-family:var(--font-mono);font-size:0.84rem;color:var(--text);width:98px;text-align:right;flex-shrink:0}
 
 /* ── DONUT CHART ── */
 .donut-wrap{display:flex;align-items:center;gap:28px}
 .donut-legend{display:flex;flex-direction:column;gap:10px;flex:1}
-.legend-item{display:flex;align-items:center;gap:10px;font-size:0.78rem}
+.legend-item{display:flex;align-items:center;gap:10px;font-size:0.86rem}
 .legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .legend-label{color:var(--text2);flex:1}
-.legend-val{font-family:var(--font-mono);font-size:0.75rem;color:var(--text)}
+.legend-val{font-family:var(--font-mono);font-size:0.88rem;color:var(--text)}
 
 /* ── TIME TRACKER CIRCLES ── */
 .time-circles{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
@@ -139,15 +139,15 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .time-circle-card:hover{border-color:var(--border2)}
 .circle-label{font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);margin-bottom:12px}
 .circle-svg{margin:0 auto 10px;display:block}
-.circle-val{font-family:var(--font-serif);font-size:1.4rem;color:var(--text);line-height:1}
-.circle-pct{font-size:0.7rem;color:var(--text2);margin-top:3px;font-family:var(--font-mono)}
+.circle-val{font-family:var(--font-serif);font-size:1.65rem;color:var(--text);line-height:1}
+.circle-pct{font-size:0.78rem;color:var(--text2);margin-top:4px;font-family:var(--font-mono)}
 
 /* ── INVESTMENT ── */
 .inv-row{display:grid;grid-template-columns:1fr 110px 110px 90px 46px;gap:12px;align-items:center;padding:13px 18px;border-bottom:1px solid var(--border);transition:background 0.15s}
 .inv-row:last-child{border-bottom:none}
 .inv-row:hover{background:var(--s2)}
-.inv-name{font-size:0.875rem;font-weight:400}
-.inv-ticker{font-family:var(--font-mono);font-size:0.68rem;color:var(--text2);margin-top:2px}
+.inv-name{font-size:0.96rem;font-weight:400}
+.inv-ticker{font-family:var(--font-mono);font-size:0.74rem;color:var(--text2);margin-top:3px}
 .gain-pos{color:var(--teal)}.gain-neg{color:var(--red)}
 
 /* ── BUDGET ── */
@@ -200,16 +200,16 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .cred-card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;transition:border-color 0.2s}
 .cred-card:hover{border-color:var(--border2)}
 .cred-card-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
-.cred-card-title{font-size:0.9rem;font-weight:400;color:var(--text)}
-.cred-card-type{font-size:0.68rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text2);margin-top:3px;font-family:var(--font-mono)}
+.cred-card-title{font-size:1rem;font-weight:400;color:var(--text)}
+.cred-card-type{font-size:0.74rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text2);margin-top:3px;font-family:var(--font-mono)}
 .cred-card-body{padding:16px 20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
-.cred-stat label{font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:4px}
-.cred-stat .v{font-family:var(--font-mono);font-size:0.9rem;color:var(--text);font-weight:500}
+.cred-stat label{font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:5px}
+.cred-stat .v{font-family:var(--font-mono);font-size:1.06rem;color:var(--text);font-weight:600}
 .cred-card-footer{padding:10px 20px 16px;display:flex;flex-direction:column;gap:8px}
-.cred-progress-label{display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text2);margin-bottom:4px}
+.cred-progress-label{display:flex;justify-content:space-between;font-size:0.76rem;color:var(--text2);margin-bottom:4px}
 .cred-bar-track{height:6px;background:var(--s3);border-radius:3px;overflow:hidden}
 .cred-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--teal),var(--blue));transition:width 0.5s ease}
-.cred-end-date{font-size:0.72rem;color:var(--text2);font-family:var(--font-mono);text-align:right}
+.cred-end-date{font-size:0.82rem;color:var(--text2);font-family:var(--font-mono);text-align:right}
 .cred-end-date span{color:var(--gold)}
 
 /* ── SCROLLBAR ── */
