@@ -90,12 +90,23 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const SUPABASE_TABLE = 'personal_data';
 
+function createEmergencyState() {
+  return {
+    monthlyExpenses: 0,
+    targetMonths: 6,
+    currentAmount: 0,
+    location: '',
+    moves: []
+  };
+}
+
 const S = {
   transactions: [],
   timeEntries: [],
   investments: [],
   budgets: [],
   credits: [],
+  emergency: createEmergencyState(),
   categories: {
     expense: [
       {icon:'🛒',name:'Alimentação'},{icon:'🚗',name:'Transporte'},{icon:'🏠',name:'Habitação'},
@@ -122,15 +133,26 @@ const UI = {
   }
 };
 
+function normalizeState() {
+  if (!S.emergency || typeof S.emergency !== 'object') S.emergency = createEmergencyState();
+  S.emergency = { ...createEmergencyState(), ...S.emergency };
+  S.emergency.monthlyExpenses = Number(S.emergency.monthlyExpenses) || 0;
+  S.emergency.targetMonths = Math.max(1, parseInt(S.emergency.targetMonths, 10) || 6);
+  S.emergency.currentAmount = Math.max(0, Number(S.emergency.currentAmount) || 0);
+  S.emergency.location = S.emergency.location || '';
+  S.emergency.moves = Array.isArray(S.emergency.moves) ? S.emergency.moves : [];
+}
+
 function load() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) { const d = JSON.parse(saved); Object.assign(S, d); S.months = { fin: new Date(), time: new Date(), inv: new Date() }; }
   } catch(e) {}
+  normalizeState();
 }
 
 function stateSnapshot() {
-  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits };
+  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, emergency: S.emergency };
   return d;
 }
 
@@ -165,6 +187,7 @@ function showTab(tab, btn) {
   if (tab === 'tempo') renderTime();
   if (tab === 'investimentos') renderInv();
   if (tab === 'orcamento') renderBudget();
+  if (tab === 'reserva') renderEmergency();
   if (tab === 'creditos') renderCredits();
 }
 
@@ -276,6 +299,7 @@ function renderAll() {
   renderTime();
   renderInv();
   renderBudget();
+  renderEmergency();
   renderCredits();
 }
 
@@ -750,6 +774,139 @@ function renderInv() {
 }
 
 // ══════════════════════════════════════
+// EMERGENCY RESERVE
+function emergencyCalc() {
+  normalizeState();
+  const monthly = S.emergency.monthlyExpenses;
+  const targetMonths = S.emergency.targetMonths;
+  const current = S.emergency.currentAmount;
+  const target = monthly * targetMonths;
+  const covered = monthly > 0 ? current / monthly : 0;
+  const missing = Math.max(target - current, 0);
+  const progress = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+  return { monthly, targetMonths, current, target, covered, missing, progress };
+}
+
+function saveEmergencySettings() {
+  const monthly = num('res-monthly');
+  const months = parseInt(document.getElementById('res-months').value, 10);
+  const current = num('res-current');
+  if (Number.isNaN(monthly) || monthly < 0) { highlight('res-monthly'); return; }
+  if (!months || months < 1) { highlight('res-months'); return; }
+  if (Number.isNaN(current) || current < 0) { highlight('res-current'); return; }
+  S.emergency.monthlyExpenses = monthly;
+  S.emergency.targetMonths = months;
+  S.emergency.currentAmount = current;
+  S.emergency.location = document.getElementById('res-location').value.trim();
+  save();
+  renderEmergency();
+  toast('Reserva configurada', 'var(--teal)');
+}
+
+function addEmergencyMove() {
+  normalizeState();
+  const type = document.getElementById('res-move-type').value;
+  const amount = num('res-move-amount');
+  const date = document.getElementById('res-move-date').value || today();
+  const note = document.getElementById('res-move-note').value.trim();
+  if (!amount || amount <= 0) { highlight('res-move-amount'); return; }
+  if (type === 'out' && amount > S.emergency.currentAmount) {
+    toast('A saída é maior do que o saldo atual', 'var(--red)');
+    highlight('res-move-amount');
+    return;
+  }
+  const move = { id: uid(), type, amount, date, note };
+  S.emergency.moves.push(move);
+  S.emergency.currentAmount = Math.max(0, S.emergency.currentAmount + (type === 'in' ? amount : -amount));
+  document.getElementById('res-move-amount').value = '';
+  document.getElementById('res-move-note').value = '';
+  document.getElementById('res-move-date').value = today();
+  save();
+  renderEmergency();
+  toast(type === 'in' ? 'Entrada adicionada' : 'Saída adicionada', type === 'in' ? 'var(--teal)' : 'var(--red)');
+}
+
+function deleteEmergencyMove(id) {
+  normalizeState();
+  const move = S.emergency.moves.find(m => m.id === id);
+  if (!move || !confirm('Eliminar este movimento da reserva?')) return;
+  S.emergency.moves = S.emergency.moves.filter(m => m.id !== id);
+  S.emergency.currentAmount = Math.max(0, S.emergency.currentAmount + (move.type === 'in' ? -move.amount : move.amount));
+  save();
+  renderEmergency();
+  toast('Movimento eliminado');
+}
+
+function renderEmergency() {
+  normalizeState();
+  const els = ['res-kpi-current','res-kpi-target','res-kpi-covered','res-kpi-missing','res-move-list'];
+  if (!els.every(id => document.getElementById(id))) return;
+
+  const calc = emergencyCalc();
+  const status = calc.target > 0 && calc.current >= calc.target
+    ? 'Reserva completa'
+    : calc.covered >= 3
+      ? 'Base sólida'
+      : calc.target > 0
+        ? 'Prioridade alta'
+        : 'Defina despesas mensais';
+
+  document.getElementById('res-monthly').value = calc.monthly || '';
+  document.getElementById('res-months').value = calc.targetMonths;
+  document.getElementById('res-current').value = calc.current || '';
+  document.getElementById('res-location').value = S.emergency.location || '';
+  if (!document.getElementById('res-move-date').value) document.getElementById('res-move-date').value = today();
+
+  document.getElementById('res-kpi-current').textContent = fmt(calc.current);
+  document.getElementById('res-kpi-location').textContent = S.emergency.location || 'sem local definido';
+  document.getElementById('res-kpi-target').textContent = fmt(calc.target);
+  document.getElementById('res-kpi-target-months').textContent = `${calc.targetMonths} meses`;
+  document.getElementById('res-kpi-covered').textContent = calc.monthly > 0 ? calc.covered.toFixed(1) : '—';
+  document.getElementById('res-kpi-missing').textContent = fmt(calc.missing);
+  document.getElementById('res-kpi-progress').textContent = `${calc.progress.toFixed(0)}% concluído`;
+
+  const fill = document.getElementById('res-progress-fill');
+  if (fill) fill.style.width = `${calc.progress}%`;
+  const ring = document.getElementById('res-ring');
+  if (ring) {
+    ring.textContent = `${calc.progress.toFixed(0)}%`;
+    ring.style.borderColor = calc.progress >= 100 ? 'var(--teal)' : calc.progress >= 50 ? 'var(--gold)' : 'var(--border)';
+  }
+
+  const suggested = calc.missing > 0 ? calc.missing / 12 : 0;
+  const plan = document.getElementById('res-plan');
+  if (plan) {
+    plan.innerHTML = [
+      { label: 'Estado', value: status, pct: calc.progress, color: calc.progress >= 100 ? 'var(--teal)' : 'var(--gold)' },
+      { label: 'Objetivo', value: `${calc.targetMonths} x ${fmt(calc.monthly)}`, pct: 100, color: 'var(--blue)' },
+      { label: 'Aporte 12m', value: calc.missing ? fmt(suggested) + '/mês' : 'concluído', pct: calc.progress, color: 'var(--teal)' }
+    ].map(row => `<div class="bar-row">
+      <div class="bar-label">${row.label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.min(Math.max(row.pct, 0), 100)}%;background:${row.color}"></div></div>
+      <div class="bar-val">${row.value}</div>
+    </div>`).join('');
+  }
+
+  const list = document.getElementById('res-move-list');
+  const moves = [...S.emergency.moves].sort((a,b) => b.date.localeCompare(a.date));
+  if (!moves.length) {
+    list.innerHTML = `<div class="empty"><div class="e-icon">â—Ž</div>Nenhum movimento registado</div>`;
+  } else {
+    list.innerHTML = moves.map(m => {
+      const isIn = m.type === 'in';
+      return `<div class="tx-row" style="grid-template-columns:34px 1fr auto auto">
+        <div class="tx-icon" style="background:${isIn ? 'var(--teal-d)' : 'var(--red-d)'}">${isIn ? '+' : '&minus;'}</div>
+        <div>
+          <div class="tx-desc">${isIn ? 'Entrada na reserva' : 'Saída da reserva'}</div>
+          <div class="tx-meta"><span>${fmtDate(m.date)}</span>${m.note ? `<span style="color:var(--text3);font-size:0.65rem">${esc(m.note.slice(0,40))}</span>` : ''}</div>
+        </div>
+        <div class="mono ${isIn ? 'c-teal' : 'c-red'}">${isIn ? '+' : '&minus;'}${fmt(m.amount)}</div>
+        <div class="row-actions"><button class="btn btn-danger btn-sm" onclick="deleteEmergencyMove('${m.id}')" title="Eliminar">&times;</button></div>
+      </div>`;
+    }).join('');
+  }
+}
+
 // BUDGET
 // ══════════════════════════════════════
 function setBudget() {
@@ -1305,7 +1462,7 @@ function exportBackup() {
   const payload = {
     ...stateSnapshot(),
     savedAt: new Date().toISOString(),
-    appVersion: '1.0.0'
+    appVersion: '1.2.0'
   };
   downloadFile(`gestao-pessoal-backup-${today()}.json`, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
   toast('Backup JSON exportado', 'var(--teal)');
@@ -1324,6 +1481,8 @@ function exportCsv() {
   S.timeEntries.forEach(e => rows.push(['tempo', e.id, e.mainCat, e.subCat, e.desc, e.date, '', e.hours, '', '', '', '', '', '', '', '', '', '', e.note]));
   S.investments.forEach(i => rows.push(['investimento', i.id, i.type, '', '', i.date, '', '', i.name, i.ticker, i.qty, i.buyPrice, i.currPrice, '', '', '', '', '', i.note]));
   S.budgets.forEach(b => rows.push(['orcamento', '', b.type, b.cat, '', '', b.limit, '', '', '', '', '', '', '', '', '', '', '', '']));
+  rows.push(['reserva', 'config', 'emergencia', '', 'Reserva de emergência', '', S.emergency.currentAmount, '', S.emergency.location, '', '', '', '', S.emergency.monthlyExpenses, '', '', S.emergency.targetMonths, '', 'configuracao']);
+  S.emergency.moves.forEach(m => rows.push(['reserva', m.id, m.type, '', m.note || '', m.date, m.amount, '', '', '', '', '', '', '', '', '', '', '', 'movimento']));
   S.credits.forEach(c => rows.push(['credito', c.id, c.type, '', c.name, c.start, '', '', '', '', '', '', '', c.total, c.paid, c.monthly, c.remaining, c.rate, c.note]));
   const csv = rows.map(row => row.map(csvCell).join(';')).join('\r\n');
   downloadFile(`gestao-pessoal-dados-${today()}.csv`, '\ufeff' + csv, 'text/csv;charset=utf-8');
@@ -1335,7 +1494,9 @@ function applyImportedData(data) {
   ['transactions','timeEntries','investments','budgets','credits'].forEach(key => {
     if (Array.isArray(data[key])) S[key] = data[key];
   });
+  if (data.emergency && typeof data.emergency === 'object') S.emergency = data.emergency;
   if (data.categories && typeof data.categories === 'object') S.categories = data.categories;
+  normalizeState();
   saveLocal();
   queueCloudAutoSave();
   renderAll();
@@ -1483,7 +1644,7 @@ async function cloudSave(options = {}) {
     const payload = {
       ...stateSnapshot(),
       savedAt: new Date().toISOString(),
-      appVersion: '1.1.0'
+      appVersion: '1.2.0'
     };
     const { error } = await CLOUD.client
       .from(SUPABASE_TABLE)
@@ -1522,7 +1683,9 @@ async function cloudLoad(options = {}) {
       ['transactions','timeEntries','investments','budgets','credits'].forEach(key => {
         if (Array.isArray(snapshot[key])) S[key] = snapshot[key];
       });
+      if (snapshot.emergency && typeof snapshot.emergency === 'object') S.emergency = snapshot.emergency;
       if (snapshot.categories && typeof snapshot.categories === 'object') S.categories = snapshot.categories;
+      normalizeState();
       saveLocal();
       renderAll();
       cloudSetStatus('ok');
@@ -1733,6 +1896,8 @@ async function driveLoad() {
       if (data.budgets)      S.budgets      = data.budgets;
       if (data.categories)   S.categories   = data.categories;
       if (data.credits)      S.credits      = data.credits;
+      if (data.emergency)    S.emergency    = data.emergency;
+      normalizeState();
       saveLocal(); // also update localStorage as cache without re-uploading immediately
       renderAll();
       driveSetStatus('ok');
@@ -1769,14 +1934,17 @@ document.getElementById('fin-date').value = today();
 document.getElementById('time-date').value = today();
 document.getElementById('inv-date').value = today();
 document.getElementById('cred-start').value = today();
+document.getElementById('res-move-date').value = today();
 renderTimeSubcats();
 renderFin();
 renderBudget();
+renderEmergency();
 renderCredits();
 
 window.addEventListener('keydown', e => {
   if (e.key === 'Enter' && ['fin-desc','fin-amount'].includes(e.target.id)) addTransaction();
   if (e.key === 'Enter' && ['time-hours','time-desc'].includes(e.target.id)) addTimeEntry();
+  if (e.key === 'Enter' && ['res-move-amount','res-move-note'].includes(e.target.id)) addEmergencyMove();
 });
 
 window.addEventListener('resize', () => {
@@ -1791,6 +1959,7 @@ window.addEventListener('resize', () => {
 Object.assign(window, {
   addCategory,
   addCredit,
+  addEmergencyMove,
   addInvestment,
   addTimeEntry,
   addTransaction,
@@ -1806,6 +1975,7 @@ Object.assign(window, {
   cloudSignUp,
   deleteBudget,
   deleteCredit,
+  deleteEmergencyMove,
   deleteInvestment,
   deleteTimeEntry,
   deleteTransaction,
@@ -1823,7 +1993,9 @@ Object.assign(window, {
   lockApp,
   removeCategory,
   renderFin,
+  renderEmergency,
   renderTimeSubcats,
+  saveEmergencySettings,
   saveDriveConfig,
   setBudget,
   setFinType,
