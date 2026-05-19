@@ -1059,15 +1059,20 @@ function renderBudget() {
 
   // Regra pessoal: 60% despesas gerais | 20% investir | 10% poupança | 10% lazer
   const income = monthTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
-  const lazerCats = ['Lazer','Restauração','Vestuário'];
-  const poupancaCats = ['Poupança'];
-  const investCats = ['Investimentos'];
-  const lazer    = monthTx.filter(t=>t.type==='expense'&&lazerCats.includes(t.cat)).reduce((s,t)=>s+t.amount,0);
-  const poupanca = monthTx.filter(t=>t.type==='expense'&&poupancaCats.includes(t.cat)).reduce((s,t)=>s+t.amount,0);
-  const investTx = monthTx.filter(t=>t.type==='expense'&&investCats.includes(t.cat)).reduce((s,t)=>s+t.amount,0);
+  const normCat = cat => String(cat || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const lazerCats = ['lazer'];
+  const poupancaCats = ['poupanca','poupancas','reserva','reserva de emergencia'];
+  const investCats = ['investir','investimento','investimentos'];
+  const expenseTx = monthTx.filter(t=>t.type==='expense');
+  const isLazer = t => lazerCats.includes(normCat(t.cat));
+  const isPoupanca = t => poupancaCats.includes(normCat(t.cat));
+  const isInvest = t => investCats.includes(normCat(t.cat));
+  const lazer    = expenseTx.filter(isLazer).reduce((s,t)=>s+t.amount,0);
+  const poupanca = expenseTx.filter(isPoupanca).reduce((s,t)=>s+t.amount,0);
+  const investTx = expenseTx.filter(isInvest).reduce((s,t)=>s+t.amount,0);
   const investPort = S.investments.filter(i=>{ const d=toDate(i.date); return d.getMonth()===m&&d.getFullYear()===y; }).reduce((s,i)=>s+i.qty*i.buyPrice,0);
   const invest   = investTx + investPort;
-  const despGerais = monthTx.filter(t=>t.type==='expense'&&!lazerCats.includes(t.cat)&&!poupancaCats.includes(t.cat)&&!investCats.includes(t.cat)).reduce((s,t)=>s+t.amount,0);
+  const despGerais = expenseTx.filter(t=>!isInvest(t)&&!isLazer(t)&&!isPoupanca(t)).reduce((s,t)=>s+t.amount,0);
   const ruleBars = document.getElementById('rule-bars');
   if (ruleBars && income > 0) {
     const ruleData = [
