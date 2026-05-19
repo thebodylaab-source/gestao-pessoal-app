@@ -1578,6 +1578,15 @@ function cloudCredentials() {
   return { email, password };
 }
 
+function cloudEmail() {
+  const email = document.getElementById('cloud-email')?.value.trim();
+  if (!email) {
+    toast('Escreva o email para recuperar a password', 'var(--red)');
+    return null;
+  }
+  return email;
+}
+
 async function cloudLogin() {
   if (!CLOUD.client) return cloudAuth();
   const credentials = cloudCredentials();
@@ -1620,6 +1629,50 @@ async function cloudSignUp() {
   } catch (e) {
     cloudSetStatus('error');
     toast('Erro ao criar conta: ' + e.message, 'var(--red)');
+  }
+}
+
+async function cloudResetPassword() {
+  if (!CLOUD.client) return cloudAuth();
+  const email = cloudEmail();
+  if (!email) return;
+  cloudSetStatus('syncing');
+  try {
+    const { error } = await CLOUD.client.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin
+    });
+    if (error) throw error;
+    localStorage.setItem('gp_cloud_email', email);
+    cloudSetStatus('ready');
+    toast('Email de recuperação enviado', 'var(--teal)');
+  } catch (e) {
+    cloudSetStatus('error');
+    toast('Erro ao recuperar password: ' + e.message, 'var(--red)');
+  }
+}
+
+async function finishCloudPasswordRecovery() {
+  if (!CLOUD.client) return;
+  const next = prompt('Nova password Cloud:');
+  if (!next || next.length < 6) {
+    toast('Use pelo menos 6 caracteres', 'var(--red)');
+    return;
+  }
+  const confirmNext = prompt('Repita a nova password Cloud:');
+  if (next !== confirmNext) {
+    toast('As passwords não coincidem', 'var(--red)');
+    return;
+  }
+  cloudSetStatus('syncing');
+  try {
+    const { data, error } = await CLOUD.client.auth.updateUser({ password: next });
+    if (error) throw error;
+    CLOUD.user = data.user || CLOUD.user;
+    cloudSetStatus('ok');
+    toast('Password Cloud alterada', 'var(--teal)');
+  } catch (e) {
+    cloudSetStatus('error');
+    toast('Erro ao alterar password: ' + e.message, 'var(--red)');
   }
 }
 
@@ -1734,6 +1787,7 @@ function initCloud() {
     const changedUser = nextUser?.id !== CLOUD.user?.id;
     CLOUD.user = nextUser;
     cloudSetStatus(CLOUD.user ? 'ok' : 'ready');
+    if (_event === 'PASSWORD_RECOVERY') finishCloudPasswordRecovery();
     if (CLOUD.user && changedUser) cloudLoad({ silent: true });
   });
 }
@@ -1971,6 +2025,7 @@ Object.assign(window, {
   cloudLoad,
   cloudLogin,
   cloudLogout,
+  cloudResetPassword,
   cloudSave,
   cloudSignUp,
   deleteBudget,
