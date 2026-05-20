@@ -102,6 +102,17 @@ function createEmergencyState() {
   };
 }
 
+function createDefaultTimeCategories() {
+  return [
+    { id: 'familia', icon: '👨‍👩‍👧‍👦', name: 'Família', color: 'var(--teal)', subs: ['Diana','Simão','Mãe','Pai','Família toda'] },
+    { id: 'trabalho', icon: '💼', name: 'Trabalho', color: 'var(--gold)', subs: ['Treinos','Gestão','Eventos','Formação','Reuniões','Outros'] },
+    { id: 'dormir', icon: '😴', name: 'Dormir', color: 'var(--purple)', subs: ['Noite','Sesta'] },
+    { id: 'desporto', icon: '🏃', name: 'Desporto', color: 'var(--blue)', subs: ['Corrida','Ginásio','Natação','Futebol','Ciclismo','Outro'] },
+    { id: 'ler', icon: '📖', name: 'Leitura', color: '#c8a96e', subs: ['Livro','Artigos','Newsletters','Outro'] },
+    { id: 'perdido', icon: '⌛', name: 'Tempo Perdido', color: 'var(--red)', subs: ['Redes sociais','TV/Streaming','Procrastinação','Outro'] }
+  ];
+}
+
 const S = {
   transactions: [],
   timeEntries: [],
@@ -119,7 +130,8 @@ const S = {
     income: [
       {icon:'💼',name:'Salário'},{icon:'🔧',name:'Freelance'},
       {icon:'📈',name:'Investimentos'},{icon:'🎁',name:'Presente'},{icon:'📦',name:'Outros'}
-    ]
+    ],
+    time: createDefaultTimeCategories()
   },
   finType: 'expense',
   periods: { fin: 'month', time: 'month' },
@@ -146,8 +158,49 @@ function createDefaultCategories() {
     income: [
       {icon:'ðŸ’¼',name:'SalÃ¡rio'},{icon:'ðŸ”§',name:'Freelance'},
       {icon:'ðŸ“ˆ',name:'Investimentos'},{icon:'ðŸŽ',name:'Presente'},{icon:'ðŸ“¦',name:'Outros'}
-    ]
+    ],
+    time: createDefaultTimeCategories()
   };
+}
+
+const TIME_COLOR_PALETTE = ['var(--teal)','var(--gold)','var(--purple)','var(--blue)','#c8a96e','var(--red)','var(--text2)'];
+
+function slugify(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'categoria';
+}
+
+function normalizeTimeCategories(input) {
+  const legacyObject = input && !Array.isArray(input) && typeof input === 'object'
+    ? Object.entries(input).map(([id, value]) => ({ id, ...value }))
+    : null;
+  const source = Array.isArray(input) ? input : (legacyObject || createDefaultTimeCategories());
+  const used = new Set();
+  const normalized = source.map((cat, index) => {
+    const labelParts = String(cat?.label || '').trim().split(/\s+/).filter(Boolean);
+    const fallback = createDefaultTimeCategories()[index] || {};
+    const name = cat?.name || labelParts.slice(1).join(' ') || cat?.label || fallback.name || 'Categoria';
+    const baseId = slugify(cat?.id || name);
+    let id = baseId;
+    let n = 2;
+    while (used.has(id)) id = `${baseId}-${n++}`;
+    used.add(id);
+    const subs = Array.isArray(cat?.subs)
+      ? cat.subs.map(s => String(s).trim()).filter(Boolean)
+      : ['Geral'];
+    return {
+      id,
+      icon: cat?.icon || labelParts[0] || fallback.icon || '⏱',
+      name,
+      color: cat?.color || fallback.color || TIME_COLOR_PALETTE[index % TIME_COLOR_PALETTE.length],
+      subs: subs.length ? subs : ['Geral']
+    };
+  });
+  return normalized.length ? normalized : [{ id: 'geral', icon: '⏱', name: 'Geral', color: 'var(--blue)', subs: ['Geral'] }];
 }
 
 function normalizeState() {
@@ -158,6 +211,11 @@ function normalizeState() {
   S.emergency.currentAmount = Math.max(0, Number(S.emergency.currentAmount) || 0);
   S.emergency.location = S.emergency.location || '';
   S.emergency.moves = Array.isArray(S.emergency.moves) ? S.emergency.moves : [];
+  const defaultCategories = createDefaultCategories();
+  if (!S.categories || typeof S.categories !== 'object') S.categories = defaultCategories;
+  S.categories.expense = Array.isArray(S.categories.expense) ? S.categories.expense : defaultCategories.expense;
+  S.categories.income = Array.isArray(S.categories.income) ? S.categories.income : defaultCategories.income;
+  S.categories.time = normalizeTimeCategories(S.categories.time);
 }
 
 function storageKeyForUser(userId) {
@@ -356,6 +414,7 @@ function cancelEdit(kind) {
 function renderAll() {
   updateMonthLabels();
   renderTimeSubcats();
+  renderTimeCategoryEditor();
   renderFin();
   renderTime();
   renderInv();
@@ -574,24 +633,104 @@ function renderFin() {
 // ══════════════════════════════════════
 // TIME TRACKING
 // ══════════════════════════════════════
-const TIME_CATS = {
-  familia: { label: '👨‍👩‍👧‍👦 Família', color: 'var(--teal)', subs: ['Diana','Simão','Mãe','Pai','Família toda'] },
-  trabalho: { label: '💼 Trabalho', color: 'var(--gold)', subs: ['Treinos','Gestão','Eventos','Formação','Reuniões','Outros'] },
-  dormir: { label: '😴 Dormir', color: 'var(--purple)', subs: ['Noite','Sesta'] },
-  desporto: { label: '🏃 Desporto', color: 'var(--blue)', subs: ['Corrida','Ginásio','Natação','Futebol','Ciclismo','Outro'] },
-  ler: { label: '📖 Leitura', color: '#c8a96e', subs: ['Livro','Artigos','Newsletters','Outro'] },
-  perdido: { label: '⌛ Tempo Perdido', color: 'var(--red)', subs: ['Redes sociais','TV/Streaming','Procrastinação','Outro'] }
-};
+function getTimeCategories() {
+  S.categories.time = normalizeTimeCategories(S.categories.time);
+  return S.categories.time;
+}
 
-function renderTimeSubcats() {
+function getTimeCat(id) {
+  return getTimeCategories().find(c => c.id === id) || { id, icon: '⏱', name: id || 'Tempo', color: 'var(--blue)', subs: ['Geral'] };
+}
+
+function timeCatLabel(cat) {
+  return `${cat.icon || '⏱'} ${cat.name || 'Tempo'}`;
+}
+
+function softTimeColor(color) {
+  const map = {
+    'var(--teal)': 'var(--teal-d)',
+    'var(--gold)': 'var(--gold-d)',
+    'var(--purple)': 'var(--purple-d)',
+    'var(--blue)': 'var(--blue-d)',
+    'var(--red)': 'var(--red-d)'
+  };
+  return map[color] || `${color}22`;
+}
+
+function renderTimeMainCats(selected = '') {
+  const select = document.getElementById('time-main-cat');
+  if (!select) return;
+  const previous = selected || select.value;
+  const cats = getTimeCategories();
+  select.innerHTML = cats.map(c => `<option value="${esc(c.id)}">${esc(timeCatLabel(c))}</option>`).join('');
+  if (previous && cats.some(c => c.id === previous)) select.value = previous;
+  if (!select.value && cats[0]) select.value = cats[0].id;
+}
+
+function renderTimeSubcats(selected = '') {
+  renderTimeMainCats();
   const main = document.getElementById('time-main-cat').value;
-  const subs = TIME_CATS[main]?.subs || [];
-  document.getElementById('time-sub-cat').innerHTML = subs.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  const subSelect = document.getElementById('time-sub-cat');
+  const previous = selected || subSelect.value;
+  const subs = getTimeCat(main).subs || ['Geral'];
+  subSelect.innerHTML = subs.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  if (previous && subs.includes(previous)) subSelect.value = previous;
+}
+
+function addTimeCategory() {
+  const iconEl = document.getElementById('new-time-icon');
+  const nameEl = document.getElementById('new-time-name');
+  const subsEl = document.getElementById('new-time-subs');
+  const icon = iconEl.value.trim() || '⏱';
+  const name = nameEl.value.trim();
+  const subs = subsEl.value.split(',').map(s => s.trim()).filter(Boolean);
+  if (!name) { highlight('new-time-name'); return; }
+  const cats = getTimeCategories();
+  const baseId = slugify(name);
+  let id = baseId;
+  let n = 2;
+  while (cats.some(c => c.id === id)) id = `${baseId}-${n++}`;
+  if (cats.some(c => c.name.toLowerCase() === name.toLowerCase())) { toast('Categoria de tempo já existe'); return; }
+  cats.push({ id, icon, name, color: TIME_COLOR_PALETTE[cats.length % TIME_COLOR_PALETTE.length], subs: subs.length ? subs : ['Geral'] });
+  iconEl.value = '';
+  nameEl.value = '';
+  subsEl.value = '';
+  save();
+  renderTimeMainCats(id);
+  renderTimeSubcats();
+  renderTimeCategoryEditor();
+  renderTime();
+  toast('Categoria de tempo adicionada', 'var(--blue)');
+}
+
+function removeTimeCategory(id) {
+  const cat = getTimeCat(id);
+  const isUsed = S.timeEntries.some(e => e.mainCat === id);
+  if (isUsed && !confirm(`A categoria "${cat.name}" tem registos. Remover mesmo assim?`)) return;
+  S.categories.time = getTimeCategories().filter(c => c.id !== id);
+  save();
+  renderTimeSubcats();
+  renderTimeCategoryEditor();
+  renderTime();
+  toast('Categoria de tempo removida');
+}
+
+function renderTimeCategoryEditor() {
+  const el = document.getElementById('cat-time-editor');
+  if (!el) return;
+  el.innerHTML = getTimeCategories().map(c => `
+    <div class="cat-chip time-cat-chip" title="${esc(c.subs.join(', '))}">
+      <span class="icon">${esc(c.icon)}</span>
+      <span>${esc(c.name)}</span>
+      <small>${c.subs.length}</small>
+      <button class="remove" onclick="removeTimeCategory('${jsStr(c.id)}')" title="Remover">×</button>
+    </div>
+  `).join('');
 }
 
 function addTimeEntry() {
   const mainCat = document.getElementById('time-main-cat').value;
-  const subCat = document.getElementById('time-sub-cat').value;
+  const subCat = document.getElementById('time-sub-cat').value || 'Geral';
   const desc = document.getElementById('time-desc').value.trim();
   const date = document.getElementById('time-date').value;
   const hours = num('time-hours');
@@ -614,9 +753,8 @@ function editTimeEntry(id) {
   const e = S.timeEntries.find(x => x.id === id);
   if (!e) return;
   UI.editing.time = id;
-  document.getElementById('time-main-cat').value = e.mainCat || 'familia';
-  renderTimeSubcats();
-  document.getElementById('time-sub-cat').value = e.subCat || '';
+  renderTimeMainCats(e.mainCat || 'familia');
+  renderTimeSubcats(e.subCat || '');
   document.getElementById('time-desc').value = e.desc || '';
   document.getElementById('time-date').value = e.date || today();
   document.getElementById('time-hours').value = e.hours || '';
@@ -634,36 +772,48 @@ function deleteTimeEntry(id) {
 function renderTime() {
   updateMonthLabels();
   renderTimeSubcats();
+  renderTimeCategoryEditor();
   const m = S.months.time.getMonth(), y = S.months.time.getFullYear();
   const entries = filterByMonth(S.timeEntries, 'date', m, y);
   const total = entries.reduce((s,e) => s + e.hours, 0);
+  const cats = getTimeCategories();
 
   const byMain = {};
-  Object.keys(TIME_CATS).forEach(k => byMain[k] = 0);
+  cats.forEach(c => byMain[c.id] = 0);
   entries.forEach(e => byMain[e.mainCat] = (byMain[e.mainCat] || 0) + e.hours);
 
   // KPIs
-  document.getElementById('time-kpi-total').textContent = fmtH(total);
-  document.getElementById('time-kpi-family').textContent = fmtH(byMain.familia);
-  document.getElementById('time-kpi-family-pct').textContent = total ? pct(byMain.familia, total) + ' do total' : '—';
-  document.getElementById('time-kpi-work').textContent = fmtH(byMain.trabalho);
-  document.getElementById('time-kpi-work-pct').textContent = total ? pct(byMain.trabalho, total) + ' do total' : '—';
-  document.getElementById('time-kpi-lost').textContent = fmtH(byMain.perdido);
-  document.getElementById('time-kpi-lost-pct').textContent = total ? pct(byMain.perdido, total) + ' do total' : '—';
+  const kpis = document.getElementById('time-kpi-categories');
+  if (kpis) {
+    const totalCard = `<div class="kpi-card" style="--accent:var(--blue);--accent-bg:var(--blue-d)">
+      <label>Horas Registadas</label>
+      <div class="val">${fmtH(total)}</div>
+      <div class="sub">este mês</div>
+    </div>`;
+    const categoryCards = cats.map(cat => {
+      const h = byMain[cat.id] || 0;
+      return `<div class="kpi-card" style="--accent:${cat.color};--accent-bg:${softTimeColor(cat.color)}">
+        <label>${esc(cat.icon)} ${esc(cat.name)}</label>
+        <div class="val">${fmtH(h)}</div>
+        <div class="sub">${total ? pct(h, total) + ' do total' : '—'}</div>
+      </div>`;
+    }).join('');
+    kpis.innerHTML = totalCard + categoryCards;
+  }
 
   // Circles
   const circles = document.getElementById('time-circles');
-  circles.innerHTML = Object.entries(TIME_CATS).map(([key, info]) => {
-    const h = byMain[key] || 0;
+  circles.innerHTML = cats.map(cat => {
+    const h = byMain[cat.id] || 0;
     const p = total > 0 ? h / total : 0;
     const r = 38, cx = 44, cy = 44, stroke = 7;
     const circ = 2 * Math.PI * r;
     const dash = circ * p;
     return `<div class="time-circle-card">
-      <div class="circle-label">${info.label}</div>
+      <div class="circle-label">${esc(timeCatLabel(cat))}</div>
       <svg class="circle-svg" width="88" height="88" viewBox="0 0 88 88">
         <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--s3)" stroke-width="${stroke}"/>
-        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${info.color}" stroke-width="${stroke}"
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${cat.color}" stroke-width="${stroke}"
           stroke-dasharray="${dash.toFixed(2)} ${circ.toFixed(2)}"
           stroke-linecap="round" transform="rotate(-90 ${cx} ${cy})"/>
       </svg>
@@ -680,9 +830,10 @@ function renderTime() {
   const sortedSub = Object.entries(subTotals).sort((a,b) => b[1]-a[1]);
   subBars.innerHTML = sortedSub.length ? sortedSub.map(([key, h]) => {
     const [main, sub] = key.split('|');
+    const info = getTimeCat(main);
     return `<div class="bar-row">
-      <div class="bar-label">${TIME_CATS[main]?.label.slice(0,2) || ''} ${esc(sub)}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${(h/maxH*100).toFixed(1)}%;background:${TIME_CATS[main]?.color || 'var(--gold)'}"></div></div>
+      <div class="bar-label">${esc(info.icon || '⏱')} ${esc(sub)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(h/maxH*100).toFixed(1)}%;background:${info.color || 'var(--gold)'}"></div></div>
       <div class="bar-val">${fmtH(h)}</div>
     </div>`;
   }).join('') : '<div style="color:var(--text3);font-size:0.82rem">Sem dados</div>';
@@ -691,12 +842,12 @@ function renderTime() {
   const list = document.getElementById('time-list');
   const sorted = [...entries].sort((a,b) => b.date.localeCompare(a.date));
   list.innerHTML = sorted.length ? sorted.map(e => {
-    const info = TIME_CATS[e.mainCat] || {};
+    const info = getTimeCat(e.mainCat);
     return `<div class="tx-row" style="grid-template-columns:34px 1fr auto auto">
-      <div class="tx-icon" style="background:${info.color || 'var(--blue)'}22">${info.label?.slice(0,2) || '⏱'}</div>
+      <div class="tx-icon" style="background:${softTimeColor(info.color || 'var(--blue)')}">${esc(info.icon || '⏱')}</div>
       <div>
         <div class="tx-desc">${e.desc ? esc(e.desc) : esc(e.subCat)}</div>
-        <div class="tx-meta"><span>${fmtDate(e.date)}</span><span class="tag" style="background:${info.color||'var(--blue)'}22;color:${info.color||'var(--blue)'}">${esc(e.subCat)}</span>${e.note?`<span style="color:var(--text3);font-size:0.72rem">📝 ${esc(e.note.slice(0,30))}</span>`:''}</div>
+        <div class="tx-meta"><span>${fmtDate(e.date)}</span><span class="tag" style="background:${softTimeColor(info.color||'var(--blue)')};color:${info.color||'var(--blue)'}">${esc(e.subCat)}</span>${e.note?`<span style="color:var(--text3);font-size:0.72rem">📝 ${esc(e.note.slice(0,30))}</span>`:''}</div>
       </div>
       <div class="mono" style="color:${info.color || 'var(--blue)'}">${fmtH(e.hours)}</div>
       <div class="row-actions">
@@ -2087,6 +2238,7 @@ Object.assign(window, {
   addCredit,
   addEmergencyMove,
   addInvestment,
+  addTimeCategory,
   addTimeEntry,
   addTransaction,
   cancelEdit,
@@ -2119,8 +2271,11 @@ Object.assign(window, {
   importBackup,
   lockApp,
   removeCategory,
+  removeTimeCategory,
   renderFin,
   renderEmergency,
+  renderTimeCategoryEditor,
+  renderTimeMainCats,
   renderTimeSubcats,
   saveEmergencySettings,
   saveDriveConfig,

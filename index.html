@@ -247,57 +247,45 @@
   </div>
 
   <!-- KPIs -->
-  <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr);margin-bottom:28px">
-    <div class="kpi-card" style="--accent:var(--blue);--accent-bg:var(--blue-d)">
-      <label>Horas Registadas</label>
-      <div class="val" id="time-kpi-total">0h</div>
-      <div class="sub">este mês</div>
-    </div>
-    <div class="kpi-card" style="--accent:var(--teal);--accent-bg:var(--teal-d)">
-      <label>Família</label>
-      <div class="val" id="time-kpi-family">0h</div>
-      <div class="sub" id="time-kpi-family-pct">— do tempo</div>
-    </div>
-    <div class="kpi-card" style="--accent:var(--gold);--accent-bg:var(--gold-d)">
-      <label>Trabalho</label>
-      <div class="val" id="time-kpi-work">0h</div>
-      <div class="sub" id="time-kpi-work-pct">— do tempo</div>
-    </div>
-    <div class="kpi-card" style="--accent:var(--purple);--accent-bg:var(--purple-d)">
-      <label>Tempo Perdido</label>
-      <div class="val" id="time-kpi-lost">0h</div>
-      <div class="sub" id="time-kpi-lost-pct">— do tempo</div>
-    </div>
-  </div>
+  <div class="kpi-strip time-kpi-strip" id="time-kpi-categories"></div>
 
   <div class="two-col">
-    <!-- FORM -->
-    <div class="card">
-      <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Registar Tempo</div>
-      <div class="form-grid">
-        <div class="field">
-          <label>Categoria Principal</label>
-          <select id="time-main-cat" onchange="renderTimeSubcats()">
-            <option value="familia">👨‍👩‍👧‍👦 Família</option>
-            <option value="trabalho">💼 Trabalho</option>
-            <option value="dormir">😴 Dormir</option>
-            <option value="desporto">🏃 Desporto</option>
-            <option value="ler">📖 Leitura</option>
-            <option value="perdido">⌛ Tempo Perdido</option>
-          </select>
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <!-- FORM -->
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Registar Tempo</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Categoria Principal</label>
+            <select id="time-main-cat" onchange="renderTimeSubcats()"></select>
+          </div>
+          <div class="field" id="time-subcat-field">
+            <label>Sub-categoria</label>
+            <select id="time-sub-cat"></select>
+          </div>
+          <div class="field"><label>Descrição</label><input type="text" id="time-desc" placeholder="ex: Passeio com a Diana"></div>
+          <div class="form-row">
+            <div class="field"><label>Data</label><input type="date" id="time-date"></div>
+            <div class="field"><label>Horas</label><input type="number" id="time-hours" placeholder="0.5" min="0.25" step="0.25"></div>
+          </div>
+          <div class="field"><label>Nota</label><textarea id="time-note" placeholder="O que fiz…" style="min-height:50px"></textarea></div>
+          <button class="btn btn-primary btn-full" id="time-submit" onclick="addTimeEntry()">+ Registar</button>
+          <button class="btn btn-ghost btn-full" id="time-cancel-edit" onclick="cancelEdit('time')" style="display:none">Cancelar edição</button>
         </div>
-        <div class="field" id="time-subcat-field">
-          <label>Sub-categoria</label>
-          <select id="time-sub-cat"></select>
+      </div>
+
+      <!-- TIME CATEGORIES -->
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Categorias de Tempo</div>
+        <div class="form-grid">
+          <div class="form-row">
+            <div class="field"><label>Ícone</label><input type="text" id="new-time-icon" placeholder="🎯" maxlength="4"></div>
+            <div class="field"><label>Nome</label><input type="text" id="new-time-name" placeholder="ex: Estudo"></div>
+          </div>
+          <div class="field"><label>Sub-categorias</label><input type="text" id="new-time-subs" placeholder="ex: Curso, Livro, Pesquisa"></div>
+          <button class="btn btn-ghost btn-full" onclick="addTimeCategory()">+ Criar Categoria</button>
+          <div class="cat-editor" id="cat-time-editor"></div>
         </div>
-        <div class="field"><label>Descrição</label><input type="text" id="time-desc" placeholder="ex: Passeio com a Diana"></div>
-        <div class="form-row">
-          <div class="field"><label>Data</label><input type="date" id="time-date"></div>
-          <div class="field"><label>Horas</label><input type="number" id="time-hours" placeholder="0.5" min="0.25" step="0.25"></div>
-        </div>
-        <div class="field"><label>Nota</label><textarea id="time-note" placeholder="O que fiz…" style="min-height:50px"></textarea></div>
-        <button class="btn btn-primary btn-full" id="time-submit" onclick="addTimeEntry()">+ Registar</button>
-        <button class="btn btn-ghost btn-full" id="time-cancel-edit" onclick="cancelEdit('time')" style="display:none">Cancelar edição</button>
       </div>
     </div>
 
