@@ -94,11 +94,7 @@ let currentStorageKey = GUEST_STORAGE_KEY;
 
 function createEmergencyState() {
   return {
-    monthlyExpenses: 0,
-    targetMonths: 6,
-    currentAmount: 0,
-    location: '',
-    moves: []
+    reserves: []
   };
 }
 
@@ -143,6 +139,7 @@ const UI = {
     transaction: null,
     time: null,
     investment: null,
+    reserve: null,
     credit: null
   }
 };
@@ -203,14 +200,48 @@ function normalizeTimeCategories(input) {
   return normalized.length ? normalized : [{ id: 'geral', icon: '⏱', name: 'Geral', color: 'var(--blue)', subs: ['Geral'] }];
 }
 
+function normalizeEmergencyReserve(reserve, index = 0) {
+  const fallbackId = index === 0 ? 'principal' : `reserva-${index + 1}`;
+  return {
+    id: reserve?.id || fallbackId,
+    name: reserve?.name || reserve?.title || (index === 0 ? 'Reserva Principal' : `Reserva ${index + 1}`),
+    monthlyExpenses: Math.max(0, Number(reserve?.monthlyExpenses) || 0),
+    targetMonths: Math.max(1, parseInt(reserve?.targetMonths, 10) || 6),
+    targetDate: reserve?.targetDate || '',
+    currentAmount: Math.max(0, Number(reserve?.currentAmount) || 0),
+    location: reserve?.location || '',
+    moves: Array.isArray(reserve?.moves)
+      ? reserve.moves.map((m, moveIndex) => ({
+        id: m.id || `${fallbackId}-move-${moveIndex + 1}`,
+        type: m.type === 'out' ? 'out' : 'in',
+        amount: Math.max(0, Number(m.amount) || 0),
+        date: m.date || today(),
+        note: m.note || ''
+      })).filter(m => m.amount > 0)
+      : []
+  };
+}
+
+function normalizeEmergencyState(input) {
+  const data = input && typeof input === 'object' ? input : {};
+  let reserves = Array.isArray(data.reserves) ? data.reserves : null;
+  if (!reserves) {
+    const hasLegacyReserve = 'monthlyExpenses' in data || 'targetMonths' in data || 'currentAmount' in data || 'location' in data || Array.isArray(data.moves);
+    reserves = hasLegacyReserve ? [{
+      id: 'principal',
+      name: 'Reserva Principal',
+      monthlyExpenses: data.monthlyExpenses,
+      targetMonths: data.targetMonths,
+      currentAmount: data.currentAmount,
+      location: data.location,
+      moves: data.moves
+    }] : [];
+  }
+  return { reserves: reserves.map(normalizeEmergencyReserve) };
+}
+
 function normalizeState() {
-  if (!S.emergency || typeof S.emergency !== 'object') S.emergency = createEmergencyState();
-  S.emergency = { ...createEmergencyState(), ...S.emergency };
-  S.emergency.monthlyExpenses = Number(S.emergency.monthlyExpenses) || 0;
-  S.emergency.targetMonths = Math.max(1, parseInt(S.emergency.targetMonths, 10) || 6);
-  S.emergency.currentAmount = Math.max(0, Number(S.emergency.currentAmount) || 0);
-  S.emergency.location = S.emergency.location || '';
-  S.emergency.moves = Array.isArray(S.emergency.moves) ? S.emergency.moves : [];
+  S.emergency = normalizeEmergencyState(S.emergency);
   const defaultCategories = createDefaultCategories();
   if (!S.categories || typeof S.categories !== 'object') S.categories = defaultCategories;
   S.categories.expense = Array.isArray(S.categories.expense) ? S.categories.expense : defaultCategories.expense;
@@ -373,6 +404,7 @@ function setEditMode(kind, active) {
     transaction: { submit: 'fin-submit', cancel: 'fin-cancel-edit', add: '+ Adicionar', edit: 'Guardar alterações' },
     time: { submit: 'time-submit', cancel: 'time-cancel-edit', add: '+ Registar', edit: 'Guardar alterações' },
     investment: { submit: 'inv-submit', cancel: 'inv-cancel-edit', add: '+ Adicionar', edit: 'Guardar alterações' },
+    reserve: { submit: 'res-submit', cancel: 'res-cancel-edit', add: 'Guardar Reserva', edit: 'Guardar alterações' },
     credit: { submit: 'cred-submit', cancel: 'cred-cancel-edit', add: '+ Registar Crédito', edit: 'Guardar alterações' }
   }[kind];
   if (!cfg) return;
@@ -402,12 +434,20 @@ function clearCreditForm() {
   document.getElementById('cred-start').value = today();
 }
 
+function clearEmergencyForm() {
+  ['res-name','res-monthly','res-months','res-current','res-location','res-target-date'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+}
+
 function cancelEdit(kind) {
   UI.editing[kind] = null;
   setEditMode(kind, false);
   if (kind === 'transaction') clearTransactionForm();
   if (kind === 'time') clearTimeForm();
   if (kind === 'investment') clearInvestmentForm();
+  if (kind === 'reserve') clearEmergencyForm();
   if (kind === 'credit') clearCreditForm();
 }
 
@@ -988,48 +1028,133 @@ function renderInv() {
 // ══════════════════════════════════════
 // EMERGENCY RESERVE
 function emergencyCalc() {
-  normalizeState();
-  const monthly = S.emergency.monthlyExpenses;
-  const targetMonths = S.emergency.targetMonths;
-  const current = S.emergency.currentAmount;
-  const target = monthly * targetMonths;
-  const covered = monthly > 0 ? current / monthly : 0;
+  const reserves = getEmergencyReserves();
+  const current = reserves.reduce((s,r) => s + r.currentAmount, 0);
+  const monthly = reserves.reduce((s,r) => s + r.monthlyExpenses, 0);
+  const target = reserves.reduce((s,r) => s + r.monthlyExpenses * r.targetMonths, 0);
   const missing = Math.max(target - current, 0);
+  const covered = monthly > 0 ? current / monthly : 0;
   const progress = target > 0 ? Math.min((current / target) * 100, 100) : 0;
-  return { monthly, targetMonths, current, target, covered, missing, progress };
+  const targetDates = reserves.map(r => r.targetDate).filter(Boolean).sort();
+  return { reserves, monthly, current, target, covered, missing, progress, nextTargetDate: targetDates[0] || '' };
+}
+
+function getEmergencyReserves() {
+  normalizeState();
+  return S.emergency.reserves;
+}
+
+function getEmergencyReserve(id) {
+  return getEmergencyReserves().find(r => r.id === id) || null;
+}
+
+function reserveCalc(reserve) {
+  const target = reserve.monthlyExpenses * reserve.targetMonths;
+  const missing = Math.max(target - reserve.currentAmount, 0);
+  const progress = target > 0 ? Math.min((reserve.currentAmount / target) * 100, 100) : 0;
+  const covered = reserve.monthlyExpenses > 0 ? reserve.currentAmount / reserve.monthlyExpenses : 0;
+  const daysLeft = reserve.targetDate ? Math.ceil((toDate(reserve.targetDate) - toDate(today())) / 86400000) : null;
+  const monthsLeft = daysLeft !== null ? Math.max(daysLeft / 30.44, 0) : null;
+  const monthlyNeeded = missing > 0
+    ? monthsLeft && monthsLeft > 0
+      ? missing / monthsLeft
+      : missing / 12
+    : 0;
+  return { target, missing, progress, covered, daysLeft, monthsLeft, monthlyNeeded };
+}
+
+function renderEmergencyMoveReserveOptions(selected = '') {
+  const select = document.getElementById('res-move-reserve');
+  if (!select) return;
+  const reserves = getEmergencyReserves();
+  select.innerHTML = reserves.length
+    ? reserves.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')
+    : '<option value="">Crie uma reserva primeiro</option>';
+  if (selected && reserves.some(r => r.id === selected)) select.value = selected;
 }
 
 function saveEmergencySettings() {
+  normalizeState();
+  const name = document.getElementById('res-name').value.trim();
   const monthly = num('res-monthly');
   const months = parseInt(document.getElementById('res-months').value, 10);
   const current = num('res-current');
+  const targetDate = document.getElementById('res-target-date').value;
+  const location = document.getElementById('res-location').value.trim();
+  if (!name) { highlight('res-name'); return; }
   if (Number.isNaN(monthly) || monthly < 0) { highlight('res-monthly'); return; }
   if (!months || months < 1) { highlight('res-months'); return; }
   if (Number.isNaN(current) || current < 0) { highlight('res-current'); return; }
-  S.emergency.monthlyExpenses = monthly;
-  S.emergency.targetMonths = months;
-  S.emergency.currentAmount = current;
-  S.emergency.location = document.getElementById('res-location').value.trim();
+  const editingId = UI.editing.reserve;
+  const existing = editingId ? getEmergencyReserve(editingId) : null;
+  const reserve = {
+    id: existing?.id || uid(),
+    name,
+    monthlyExpenses: monthly,
+    targetMonths: months,
+    targetDate,
+    currentAmount: current,
+    location,
+    moves: existing?.moves || []
+  };
+  const idx = S.emergency.reserves.findIndex(r => r.id === reserve.id);
+  if (idx >= 0) S.emergency.reserves[idx] = reserve;
+  else S.emergency.reserves.push(reserve);
+  const wasEditing = Boolean(UI.editing.reserve);
+  UI.editing.reserve = null;
+  setEditMode('reserve', false);
+  clearEmergencyForm();
   save();
   renderEmergency();
-  toast('Reserva configurada', 'var(--teal)');
+  toast(wasEditing ? 'Reserva atualizada' : 'Reserva criada', 'var(--teal)');
+}
+
+function editEmergencyReserve(id) {
+  const reserve = getEmergencyReserve(id);
+  if (!reserve) return;
+  UI.editing.reserve = id;
+  document.getElementById('res-name').value = reserve.name || '';
+  document.getElementById('res-monthly').value = reserve.monthlyExpenses || '';
+  document.getElementById('res-months').value = reserve.targetMonths || 6;
+  document.getElementById('res-current').value = reserve.currentAmount || '';
+  document.getElementById('res-target-date').value = reserve.targetDate || '';
+  document.getElementById('res-location').value = reserve.location || '';
+  setEditMode('reserve', true);
+  document.getElementById('res-name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function deleteEmergencyReserve(id) {
+  const reserve = getEmergencyReserve(id);
+  if (!reserve || !confirm(`Eliminar a reserva "${reserve.name}" e os seus movimentos?`)) return;
+  S.emergency.reserves = S.emergency.reserves.filter(r => r.id !== id);
+  if (UI.editing.reserve === id) {
+    UI.editing.reserve = null;
+    setEditMode('reserve', false);
+    clearEmergencyForm();
+  }
+  save();
+  renderEmergency();
+  toast('Reserva eliminada');
 }
 
 function addEmergencyMove() {
   normalizeState();
+  const reserveId = document.getElementById('res-move-reserve').value;
+  const reserve = getEmergencyReserve(reserveId);
   const type = document.getElementById('res-move-type').value;
   const amount = num('res-move-amount');
   const date = document.getElementById('res-move-date').value || today();
   const note = document.getElementById('res-move-note').value.trim();
+  if (!reserve) { toast('Crie uma reserva antes de adicionar movimentos', 'var(--red)'); return; }
   if (!amount || amount <= 0) { highlight('res-move-amount'); return; }
-  if (type === 'out' && amount > S.emergency.currentAmount) {
-    toast('A saída é maior do que o saldo atual', 'var(--red)');
+  if (type === 'out' && amount > reserve.currentAmount) {
+    toast('A saída é maior do que o saldo desta reserva', 'var(--red)');
     highlight('res-move-amount');
     return;
   }
   const move = { id: uid(), type, amount, date, note };
-  S.emergency.moves.push(move);
-  S.emergency.currentAmount = Math.max(0, S.emergency.currentAmount + (type === 'in' ? amount : -amount));
+  reserve.moves.push(move);
+  reserve.currentAmount = Math.max(0, reserve.currentAmount + (type === 'in' ? amount : -amount));
   document.getElementById('res-move-amount').value = '';
   document.getElementById('res-move-note').value = '';
   document.getElementById('res-move-date').value = today();
@@ -1038,12 +1163,18 @@ function addEmergencyMove() {
   toast(type === 'in' ? 'Entrada adicionada' : 'Saída adicionada', type === 'in' ? 'var(--teal)' : 'var(--red)');
 }
 
-function deleteEmergencyMove(id) {
+function deleteEmergencyMove(reserveId, id) {
   normalizeState();
-  const move = S.emergency.moves.find(m => m.id === id);
+  let reserve = getEmergencyReserve(reserveId);
+  let move = reserve?.moves.find(m => m.id === id);
+  if (!move && !id) {
+    id = reserveId;
+    reserve = getEmergencyReserves().find(r => r.moves.some(m => m.id === id));
+    move = reserve?.moves.find(m => m.id === id);
+  }
   if (!move || !confirm('Eliminar este movimento da reserva?')) return;
-  S.emergency.moves = S.emergency.moves.filter(m => m.id !== id);
-  S.emergency.currentAmount = Math.max(0, S.emergency.currentAmount + (move.type === 'in' ? -move.amount : move.amount));
+  reserve.moves = reserve.moves.filter(m => m.id !== id);
+  reserve.currentAmount = Math.max(0, reserve.currentAmount + (move.type === 'in' ? -move.amount : move.amount));
   save();
   renderEmergency();
   toast('Movimento eliminado');
@@ -1051,28 +1182,26 @@ function deleteEmergencyMove(id) {
 
 function renderEmergency() {
   normalizeState();
-  const els = ['res-kpi-current','res-kpi-target','res-kpi-covered','res-kpi-missing','res-move-list'];
+  const els = ['res-kpi-current','res-kpi-target','res-kpi-covered','res-kpi-missing','res-move-list','res-reserve-list'];
   if (!els.every(id => document.getElementById(id))) return;
 
   const calc = emergencyCalc();
+  const reserves = calc.reserves;
   const status = calc.target > 0 && calc.current >= calc.target
-    ? 'Reserva completa'
+    ? 'Reservas completas'
     : calc.covered >= 3
       ? 'Base sólida'
       : calc.target > 0
         ? 'Prioridade alta'
         : 'Defina despesas mensais';
 
-  document.getElementById('res-monthly').value = calc.monthly || '';
-  document.getElementById('res-months').value = calc.targetMonths;
-  document.getElementById('res-current').value = calc.current || '';
-  document.getElementById('res-location').value = S.emergency.location || '';
   if (!document.getElementById('res-move-date').value) document.getElementById('res-move-date').value = today();
+  renderEmergencyMoveReserveOptions(document.getElementById('res-move-reserve')?.value || reserves[0]?.id || '');
 
   document.getElementById('res-kpi-current').textContent = fmt(calc.current);
-  document.getElementById('res-kpi-location').textContent = S.emergency.location || 'sem local definido';
+  document.getElementById('res-kpi-location').textContent = reserves.length ? `${reserves.length} reserva${reserves.length === 1 ? '' : 's'}` : 'nenhuma reserva criada';
   document.getElementById('res-kpi-target').textContent = fmt(calc.target);
-  document.getElementById('res-kpi-target-months').textContent = `${calc.targetMonths} meses`;
+  document.getElementById('res-kpi-target-months').textContent = calc.nextTargetDate ? `próxima meta: ${fmtDate(calc.nextTargetDate)}` : 'sem data alvo';
   document.getElementById('res-kpi-covered').textContent = calc.monthly > 0 ? calc.covered.toFixed(1) : '—';
   document.getElementById('res-kpi-missing').textContent = fmt(calc.missing);
   document.getElementById('res-kpi-progress').textContent = `${calc.progress.toFixed(0)}% concluído`;
@@ -1085,13 +1214,16 @@ function renderEmergency() {
     ring.style.borderColor = calc.progress >= 100 ? 'var(--teal)' : calc.progress >= 50 ? 'var(--gold)' : 'var(--border)';
   }
 
-  const suggested = calc.missing > 0 ? calc.missing / 12 : 0;
+  const nextDue = reserves
+    .filter(r => r.targetDate)
+    .sort((a,b) => a.targetDate.localeCompare(b.targetDate))[0];
+  const nextDueCalc = nextDue ? reserveCalc(nextDue) : null;
   const plan = document.getElementById('res-plan');
   if (plan) {
     plan.innerHTML = [
       { label: 'Estado', value: status, pct: calc.progress, color: calc.progress >= 100 ? 'var(--teal)' : 'var(--gold)' },
-      { label: 'Objetivo', value: `${calc.targetMonths} x ${fmt(calc.monthly)}`, pct: 100, color: 'var(--blue)' },
-      { label: 'Aporte 12m', value: calc.missing ? fmt(suggested) + '/mês' : 'concluído', pct: calc.progress, color: 'var(--teal)' }
+      { label: 'Objetivo total', value: fmt(calc.target), pct: 100, color: 'var(--blue)' },
+      { label: 'Próxima meta', value: nextDue ? `${nextDue.name} · ${fmtDate(nextDue.targetDate)}` : 'sem data alvo', pct: nextDueCalc ? nextDueCalc.progress : calc.progress, color: 'var(--teal)' }
     ].map(row => `<div class="bar-row">
       <div class="bar-label">${row.label}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${Math.min(Math.max(row.pct, 0), 100)}%;background:${row.color}"></div></div>
@@ -1099,8 +1231,45 @@ function renderEmergency() {
     </div>`).join('');
   }
 
+  const reserveList = document.getElementById('res-reserve-list');
+  if (reserveList) {
+    reserveList.innerHTML = reserves.length ? reserves.map(r => {
+      const rc = reserveCalc(r);
+      const dateText = r.targetDate ? fmtDate(r.targetDate) : 'sem data alvo';
+      const targetText = `${r.targetMonths} meses · ${fmt(rc.target)}`;
+      const monthlyText = rc.missing > 0 ? `${fmt(rc.monthlyNeeded)}/mês` : 'concluída';
+      const urgency = rc.daysLeft === null
+        ? 'sem prazo'
+        : rc.daysLeft < 0 && rc.missing > 0
+          ? `${Math.abs(rc.daysLeft)} dias atrasada`
+          : rc.daysLeft >= 0
+            ? `${rc.daysLeft} dias restantes`
+            : 'concluída';
+      return `<div class="reserve-card">
+        <div class="reserve-card-head">
+          <div>
+            <div class="reserve-card-title">${esc(r.name)}</div>
+            <div class="reserve-card-meta">${esc(r.location || 'sem local definido')} · ${dateText}</div>
+          </div>
+          <div class="row-actions">
+            <button class="btn btn-ghost btn-sm" onclick="editEmergencyReserve('${r.id}')" title="Editar">✎</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteEmergencyReserve('${r.id}')" title="Eliminar">×</button>
+          </div>
+        </div>
+        <div class="reserve-card-stats">
+          <div><span>Saldo</span><strong>${fmt(r.currentAmount)}</strong></div>
+          <div><span>Objetivo</span><strong>${targetText}</strong></div>
+          <div><span>Falta</span><strong>${fmt(rc.missing)}</strong></div>
+          <div><span>Aporte</span><strong>${monthlyText}</strong></div>
+        </div>
+        <div class="reserve-card-progress"><div style="width:${rc.progress.toFixed(1)}%"></div></div>
+        <div class="reserve-card-footer"><span>${rc.progress.toFixed(0)}% concluído</span><span>${urgency}</span></div>
+      </div>`;
+    }).join('') : `<div class="empty"><div class="e-icon">◎</div>Crie a primeira reserva</div>`;
+  }
+
   const list = document.getElementById('res-move-list');
-  const moves = [...S.emergency.moves].sort((a,b) => b.date.localeCompare(a.date));
+  const moves = reserves.flatMap(r => r.moves.map(m => ({ ...m, reserveId: r.id, reserveName: r.name }))).sort((a,b) => b.date.localeCompare(a.date));
   if (!moves.length) {
     list.innerHTML = `<div class="empty"><div class="e-icon">â—Ž</div>Nenhum movimento registado</div>`;
   } else {
@@ -1109,11 +1278,11 @@ function renderEmergency() {
       return `<div class="tx-row" style="grid-template-columns:34px 1fr auto auto">
         <div class="tx-icon" style="background:${isIn ? 'var(--teal-d)' : 'var(--red-d)'}">${isIn ? '+' : '&minus;'}</div>
         <div>
-          <div class="tx-desc">${isIn ? 'Entrada na reserva' : 'Saída da reserva'}</div>
+          <div class="tx-desc">${isIn ? 'Entrada' : 'Saída'} · ${esc(m.reserveName)}</div>
           <div class="tx-meta"><span>${fmtDate(m.date)}</span>${m.note ? `<span style="color:var(--text3);font-size:0.72rem">${esc(m.note.slice(0,40))}</span>` : ''}</div>
         </div>
         <div class="mono ${isIn ? 'c-teal' : 'c-red'}">${isIn ? '+' : '&minus;'}${fmt(m.amount)}</div>
-        <div class="row-actions"><button class="btn btn-danger btn-sm" onclick="deleteEmergencyMove('${m.id}')" title="Eliminar">&times;</button></div>
+        <div class="row-actions"><button class="btn btn-danger btn-sm" onclick="deleteEmergencyMove('${m.reserveId}','${m.id}')" title="Eliminar">&times;</button></div>
       </div>`;
     }).join('');
   }
@@ -1525,9 +1694,20 @@ function drawCreditTimeline() {
   const canvas = document.getElementById('chart-timeline');
   if (!canvas) return;
   const container = canvas.parentElement;
-  const minW = Math.max(container.offsetWidth || 900, 700);
+  const summary = document.getElementById('cred-timeline-summary');
+  const credits = [...S.credits].sort((a,b) => {
+    const aEnd = creditEndDate(a);
+    const bEnd = creditEndDate(b);
+    return (aEnd ? aEnd.getTime() : Infinity) - (bEnd ? bEnd.getTime() : Infinity);
+  });
+  const minW = Math.max(container.offsetWidth || 1100, 1100);
+  const laneGap = 58;
+  const minH = 360;
+  const dynamicH = credits.length ? 150 + credits.length * laneGap : minH;
   canvas.width  = minW;
-  canvas.height = 130;
+  canvas.height = Math.max(minH, dynamicH);
+  canvas.style.width = `${canvas.width}px`;
+  canvas.style.height = `${canvas.height}px`;
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
@@ -1537,113 +1717,156 @@ function drawCreditTimeline() {
   const end   = new Date(now.getFullYear() + 10, 11, 31); // 10 years ahead
   const totalMs = end - start;
 
-  const pad = { l: 20, r: 20, t: 20, b: 40 };
-  const trackY = H - pad.b - 14;
-  const trackH = 4;
+  if (summary) {
+    const totalDebt = S.credits.reduce((s,c) => s + Math.max((c.total || 0) - (c.paid || 0), 0), 0);
+    const totalMonthly = S.credits.reduce((s,c) => s + (c.monthly || 0), 0);
+    const soonest = credits.map(creditEndDate).filter(Boolean)[0];
+    summary.innerHTML = `
+      <div class="summary-pill"><label>Encargo mensal</label><strong>${fmt(totalMonthly)}</strong></div>
+      <div class="summary-pill"><label>Dívida no gráfico</label><strong>${fmt(totalDebt)}</strong></div>
+      <div class="summary-pill"><label>Próxima liquidação</label><strong>${soonest ? soonest.toLocaleDateString('pt-PT', { month:'short', year:'numeric' }) : '—'}</strong></div>
+    `;
+  }
+
+  const pad = { l: 230, r: 90, t: 72, b: 54 };
+  const axisY = pad.t - 24;
+  const chartBottom = H - pad.b;
   const trackW = W - pad.l - pad.r;
+  const shortMoney = value => {
+    const n = Number(value) || 0;
+    if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace('.', ',')}M€`;
+    if (n >= 1000) return `${Math.round(n / 1000)}k€`;
+    return `${Math.round(n)}€`;
+  };
+  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+  const xForDate = d => pad.l + ((d - start) / totalMs) * trackW;
+
+  ctx.fillStyle = '#111118';
+  roundRect(ctx, 0, 0, W, H, 12);
+  ctx.fill();
 
   // ── background track ──
   ctx.fillStyle = '#22222c';
-  roundRect(ctx, pad.l, trackY, trackW, trackH, 2);
+  roundRect(ctx, pad.l, axisY, trackW, 5, 3);
   ctx.fill();
 
   // ── year ticks ──
   ctx.fillStyle = '#4a4858';
-  ctx.font = '11px Courier New,monospace';
+  ctx.font = '13px Courier New,monospace';
   ctx.textAlign = 'center';
   for (let y = now.getFullYear(); y <= now.getFullYear() + 10; y++) {
     const d = new Date(y, 0, 1);
-    const x = pad.l + ((d - start) / totalMs) * trackW;
-    ctx.fillStyle = '#2a2a36';
-    ctx.fillRect(x, trackY - 6, 1, trackH + 12);
-    ctx.fillStyle = '#4a4858';
-    ctx.fillText(y, x, H - 6);
+    const x = xForDate(d);
+    ctx.fillStyle = y === now.getFullYear() ? '#363645' : '#24242f';
+    ctx.fillRect(x, pad.t - 12, 1, chartBottom - pad.t + 22);
+    ctx.fillStyle = y === now.getFullYear() ? '#d4a843' : '#9896a8';
+    ctx.fillText(y, x, axisY - 12);
   }
 
   // ── "today" marker ──
-  const nowX = pad.l + ((now - start) / totalMs) * trackW;
+  const nowX = xForDate(now);
   ctx.strokeStyle = '#d4a843';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 3]);
-  ctx.beginPath(); ctx.moveTo(nowX, pad.t); ctx.lineTo(nowX, trackY + trackH + 4); ctx.stroke();
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath(); ctx.moveTo(nowX, pad.t - 18); ctx.lineTo(nowX, chartBottom + 12); ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle = '#d4a843';
-  ctx.font = '10px Courier New,monospace';
+  ctx.font = '12px Courier New,monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('HOJE', nowX, pad.t - 4);
+  ctx.fillText('HOJE', nowX, chartBottom + 34);
 
-  if (!S.credits.length) {
+  if (!credits.length) {
     ctx.fillStyle = '#4a4858';
-    ctx.font = '12px Arial,sans-serif';
+    ctx.font = '16px Arial,sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Adicione créditos para ver a linha temporal', W/2, trackY - 20);
+    ctx.fillText('Adicione créditos para ver a linha temporal', W/2, H/2);
     return;
   }
 
   // ── credit bars ──
-  const laneH = 18;
-  const lanes = S.credits.length;
-  const totalLaneH = lanes * (laneH + 6);
-  const laneStartY = trackY - totalLaneH - 12;
+  const laneH = 34;
+  const laneStartY = pad.t + 18;
 
-  S.credits.forEach((c, idx) => {
+  credits.forEach((c, idx) => {
     const color = CRED_COLORS[idx % CRED_COLORS.length];
     const startD = c.start ? toDate(c.start) : now;
     const endD   = creditEndDate(c) || now;
-    const sx = pad.l + Math.max(0, (startD - start) / totalMs) * trackW;
-    const ex = pad.l + Math.min(1, (endD   - start) / totalMs) * trackW;
-    const barW = Math.max(ex - sx, 4);
-    const y2 = laneStartY + idx * (laneH + 6);
+    const sx = clamp(xForDate(startD), pad.l, pad.l + trackW);
+    const ex = clamp(xForDate(endD), pad.l, pad.l + trackW);
+    const barW = Math.max(ex - sx, 8);
+    const y2 = laneStartY + idx * laneGap;
     const pctPaid = c.total > 0 ? Math.min(c.paid / c.total, 1) : 0;
     const paidW = barW * pctPaid;
+    const outstanding = Math.max((c.total || 0) - (c.paid || 0), 0);
+
+    ctx.fillStyle = idx % 2 === 0 ? '#15151d' : '#111118';
+    roundRect(ctx, pad.l - 12, y2 - 9, trackW + 24, laneH + 18, 10);
+    ctx.fill();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#e8e6f0';
+    ctx.font = '600 14px Arial,sans-serif';
+    ctx.fillText(`${CRED_ICONS[c.type]||'📦'} ${c.name.slice(0,24)}`, 18, y2 + 7);
+    ctx.fillStyle = '#9896a8';
+    ctx.font = '12px Courier New,monospace';
+    ctx.fillText(`${shortMoney(outstanding)} em dívida · ${fmt(c.monthly).replace(',00 €','€')}/mês`, 18, y2 + 27);
 
     // full bar (remaining)
-    ctx.fillStyle = color + '30';
-    roundRect(ctx, sx, y2, barW, laneH, 4);
+    ctx.fillStyle = color + '36';
+    roundRect(ctx, sx, y2, barW, laneH, 8);
     ctx.fill();
 
     // paid portion
-    ctx.fillStyle = color + 'cc';
-    roundRect(ctx, sx, y2, Math.max(paidW, 0), laneH, 4);
-    ctx.fill();
+    if (paidW > 0) {
+      ctx.fillStyle = color;
+      roundRect(ctx, sx, y2, Math.max(paidW, 3), laneH, 8);
+      ctx.fill();
+    }
+
+    ctx.font = '12px Courier New,monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#e8e6f0';
+    if (barW > 150) ctx.fillText(`${(pctPaid * 100).toFixed(0)}% pago`, sx + 12, y2 + 21);
+    ctx.fillStyle = '#9896a8';
+    ctx.textAlign = 'right';
+    if (barW > 230) ctx.fillText(`${shortMoney(outstanding)} por pagar`, ex - 12, y2 + 21);
 
     // end dot
     ctx.beginPath();
-    ctx.arc(Math.min(ex, pad.l + trackW), y2 + laneH/2, 5, 0, Math.PI*2);
-    ctx.fillStyle = color;
-    ctx.fill();
-
-    // label
-    ctx.fillStyle = '#e8e6f0';
-    ctx.font = '11px Arial,sans-serif';
-    ctx.textAlign = 'left';
-    const labelX = sx + 8;
-    ctx.fillText(`${CRED_ICONS[c.type]||''} ${c.name.slice(0,22)}`, labelX, y2 + laneH/2 + 3.5);
-
-    // end date label
-    if (endD) {
-      const eStr = endD.toLocaleDateString('pt-PT', { month:'short', year:'2-digit' });
-      ctx.fillStyle = color;
-      ctx.font = '10px Courier New,monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText(eStr, Math.min(ex + 6, W - 60), y2 + laneH/2 + 3.5);
-    }
-  });
-
-  // connector dots on axis
-  S.credits.forEach((c, idx) => {
-    const color = CRED_COLORS[idx % CRED_COLORS.length];
-    const endD = creditEndDate(c);
-    if (!endD) return;
-    const ex = pad.l + Math.min(1, (endD - start) / totalMs) * trackW;
-    ctx.beginPath();
-    ctx.arc(ex, trackY + trackH/2, 5, 0, Math.PI*2);
+    ctx.arc(Math.min(ex, pad.l + trackW), y2 + laneH/2, 7, 0, Math.PI*2);
     ctx.fillStyle = color;
     ctx.fill();
     ctx.strokeStyle = '#0a0a0f';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.stroke();
+
+    // end date label
+    if (endD) {
+      const eStr = endD.toLocaleDateString('pt-PT', { month:'short', year:'numeric' });
+      ctx.fillStyle = color;
+      ctx.font = '12px Courier New,monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(eStr, Math.min(ex + 12, W - 78), y2 + laneH/2 + 4);
+    }
   });
+
+  const legendY = H - 24;
+  ctx.textAlign = 'left';
+  ctx.font = '12px Arial,sans-serif';
+  ctx.fillStyle = '#9896a8';
+  ctx.fillText('Legenda:', 18, legendY);
+  ctx.fillStyle = '#3dbf9b';
+  roundRect(ctx, 82, legendY - 10, 24, 8, 4); ctx.fill();
+  ctx.fillStyle = '#9896a8';
+  ctx.fillText('pago', 112, legendY);
+  ctx.fillStyle = '#3dbf9b36';
+  roundRect(ctx, 160, legendY - 10, 24, 8, 4); ctx.fill();
+  ctx.fillStyle = '#9896a8';
+  ctx.fillText('por pagar', 190, legendY);
+  ctx.fillStyle = '#d4a843';
+  ctx.beginPath(); ctx.arc(284, legendY - 6, 5, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#9896a8';
+  ctx.fillText('data prevista de liquidação', 296, legendY);
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -1698,8 +1921,10 @@ function exportCsv() {
   S.timeEntries.forEach(e => rows.push(['tempo', e.id, e.mainCat, e.subCat, e.desc, e.date, '', e.hours, '', '', '', '', '', '', '', '', '', '', e.note]));
   S.investments.forEach(i => rows.push(['investimento', i.id, i.type, '', '', i.date, '', '', i.name, i.ticker, i.qty, i.buyPrice, i.currPrice, '', '', '', '', '', i.note]));
   S.budgets.forEach(b => rows.push(['orcamento', '', b.type, b.cat, '', '', b.limit, '', '', '', '', '', '', '', '', '', '', '', '']));
-  rows.push(['reserva', 'config', 'emergencia', '', 'Reserva de emergência', '', S.emergency.currentAmount, '', S.emergency.location, '', '', '', '', S.emergency.monthlyExpenses, '', '', S.emergency.targetMonths, '', 'configuracao']);
-  S.emergency.moves.forEach(m => rows.push(['reserva', m.id, m.type, '', m.note || '', m.date, m.amount, '', '', '', '', '', '', '', '', '', '', '', 'movimento']));
+  getEmergencyReserves().forEach(r => {
+    rows.push(['reserva', r.id, 'config', '', r.name, r.targetDate, r.currentAmount, '', r.location, '', '', '', '', r.monthlyExpenses, '', '', r.targetMonths, '', 'configuracao']);
+    r.moves.forEach(m => rows.push(['reserva', m.id, m.type, r.name, m.note || '', m.date, m.amount, '', '', '', '', '', '', '', '', '', '', '', 'movimento']));
+  });
   S.credits.forEach(c => rows.push(['credito', c.id, c.type, '', c.name, c.start, '', '', '', '', '', '', '', c.total, c.paid, c.monthly, c.remaining, c.rate, c.note]));
   const csv = rows.map(row => row.map(csvCell).join(';')).join('\r\n');
   downloadFile(`gestao-pessoal-dados-${today()}.csv`, '\ufeff' + csv, 'text/csv;charset=utf-8');
@@ -2255,6 +2480,7 @@ Object.assign(window, {
   deleteBudget,
   deleteCredit,
   deleteEmergencyMove,
+  deleteEmergencyReserve,
   deleteInvestment,
   deleteTimeEntry,
   deleteTransaction,
@@ -2263,6 +2489,7 @@ Object.assign(window, {
   driveSave,
   editBudget,
   editCredit,
+  editEmergencyReserve,
   editInvestment,
   editTimeEntry,
   editTransaction,
