@@ -109,6 +109,17 @@ function createDefaultTimeCategories() {
   ];
 }
 
+function createDefaultPatrimonyCategories() {
+  return [
+    { id: 'liquidez', type: 'asset', icon: '💶', name: 'Liquidez', subs: ['Conta corrente','Poupança','Dinheiro'] },
+    { id: 'investimentos', type: 'asset', icon: '📈', name: 'Investimentos', subs: ['ETF','Ações','Cripto','PPR','Outro'] },
+    { id: 'imoveis', type: 'asset', icon: '🏠', name: 'Imóveis', subs: ['Casa','Terreno','Arrendamento'] },
+    { id: 'veiculos', type: 'asset', icon: '🚗', name: 'Veículos', subs: ['Carro','Mota','Bicicleta'] },
+    { id: 'dividas', type: 'liability', icon: '🏦', name: 'Dívidas', subs: ['Crédito','Cartão','Impostos','Outro'] },
+    { id: 'compromissos', type: 'liability', icon: '📄', name: 'Compromissos', subs: ['Prestação','Contrato','Responsabilidade'] }
+  ];
+}
+
 const S = {
   transactions: [],
   timeEntries: [],
@@ -116,6 +127,7 @@ const S = {
   budgets: [],
   credits: [],
   emergency: createEmergencyState(),
+  patrimony: { items: [], categories: createDefaultPatrimonyCategories() },
   categories: {
     expense: [
       {icon:'🛒',name:'Alimentação'},{icon:'🚗',name:'Transporte'},{icon:'🏠',name:'Habitação'},
@@ -140,6 +152,7 @@ const UI = {
     time: null,
     investment: null,
     reserve: null,
+    patrimony: null,
     credit: null
   }
 };
@@ -240,8 +253,46 @@ function normalizeEmergencyState(input) {
   return { reserves: reserves.map(normalizeEmergencyReserve) };
 }
 
+function normalizePatrimonyCategory(cat, index = 0) {
+  const fallback = createDefaultPatrimonyCategories()[index] || {};
+  const type = cat?.type === 'liability' ? 'liability' : 'asset';
+  return {
+    id: cat?.id || slugify(cat?.name || fallback.name || `categoria-${index + 1}`),
+    type,
+    icon: cat?.icon || fallback.icon || (type === 'asset' ? '💎' : '🏦'),
+    name: cat?.name || fallback.name || 'Categoria',
+    subs: Array.isArray(cat?.subs) && cat.subs.length ? cat.subs.map(s => String(s).trim()).filter(Boolean) : ['Geral']
+  };
+}
+
+function normalizePatrimony(input) {
+  const data = input && typeof input === 'object' ? input : {};
+  const categories = Array.isArray(data.categories) && data.categories.length
+    ? data.categories.map(normalizePatrimonyCategory)
+    : createDefaultPatrimonyCategories();
+  const validCategoryIds = new Set(categories.map(c => c.id));
+  const fallbackAsset = categories.find(c => c.type === 'asset')?.id || categories[0]?.id || 'liquidez';
+  const fallbackLiability = categories.find(c => c.type === 'liability')?.id || categories[0]?.id || 'dividas';
+  const items = Array.isArray(data.items) ? data.items.map((item, index) => {
+    const type = item?.type === 'liability' ? 'liability' : 'asset';
+    const fallbackCat = type === 'liability' ? fallbackLiability : fallbackAsset;
+    return {
+      id: item?.id || `pat-${index + 1}`,
+      type,
+      name: item?.name || `Item ${index + 1}`,
+      categoryId: validCategoryIds.has(item?.categoryId) ? item.categoryId : fallbackCat,
+      subcat: item?.subcat || 'Geral',
+      value: Math.max(0, Number(item?.value) || 0),
+      date: item?.date || today(),
+      note: item?.note || ''
+    };
+  }).filter(item => item.value > 0) : [];
+  return { items, categories };
+}
+
 function normalizeState() {
   S.emergency = normalizeEmergencyState(S.emergency);
+  S.patrimony = normalizePatrimony(S.patrimony);
   const defaultCategories = createDefaultCategories();
   if (!S.categories || typeof S.categories !== 'object') S.categories = defaultCategories;
   S.categories.expense = Array.isArray(S.categories.expense) ? S.categories.expense : defaultCategories.expense;
@@ -264,6 +315,7 @@ function resetState(data = {}) {
   S.budgets = Array.isArray(data.budgets) ? data.budgets : [];
   S.credits = Array.isArray(data.credits) ? data.credits : [];
   S.emergency = data.emergency && typeof data.emergency === 'object' ? data.emergency : createEmergencyState();
+  S.patrimony = data.patrimony && typeof data.patrimony === 'object' ? data.patrimony : { items: [], categories: createDefaultPatrimonyCategories() };
   S.categories = data.categories && typeof data.categories === 'object' ? data.categories : createDefaultCategories();
   S.finType = data.finType || 'expense';
   S.periods = { fin: 'month', time: 'month', ...(data.periods || {}) };
@@ -301,7 +353,7 @@ function switchLocalUser(userId = null, options = {}) {
 }
 
 function stateSnapshot() {
-  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, emergency: S.emergency };
+  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, emergency: S.emergency, patrimony: S.patrimony };
   return d;
 }
 
@@ -332,10 +384,12 @@ function showTab(tab, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
-  btn.classList.add('active');
+  if (btn) btn.classList.add('active');
   if (tab === 'financeiro') renderFin();
   if (tab === 'tempo') renderTime();
   if (tab === 'investimentos') renderInv();
+  if (tab === 'patrimonio') renderPatrimony();
+  if (tab === 'dashboard') renderDashboard();
   if (tab === 'orcamento') renderBudget();
   if (tab === 'reserva') renderEmergency();
   if (tab === 'creditos') renderCredits();
@@ -405,6 +459,7 @@ function setEditMode(kind, active) {
     time: { submit: 'time-submit', cancel: 'time-cancel-edit', add: '+ Registar', edit: 'Guardar alterações' },
     investment: { submit: 'inv-submit', cancel: 'inv-cancel-edit', add: '+ Adicionar', edit: 'Guardar alterações' },
     reserve: { submit: 'res-submit', cancel: 'res-cancel-edit', add: 'Guardar Reserva', edit: 'Guardar alterações' },
+    patrimony: { submit: 'pat-submit', cancel: 'pat-cancel-edit', add: '+ Registar', edit: 'Guardar alterações' },
     credit: { submit: 'cred-submit', cancel: 'cred-cancel-edit', add: '+ Registar Crédito', edit: 'Guardar alterações' }
   }[kind];
   if (!cfg) return;
@@ -441,6 +496,18 @@ function clearEmergencyForm() {
   });
 }
 
+function clearPatrimonyForm() {
+  ['pat-name','pat-value','pat-note'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const date = document.getElementById('pat-date');
+  if (date) date.value = today();
+  const type = document.getElementById('pat-type');
+  if (type) type.value = 'asset';
+  renderPatrimonyCategorySelects();
+}
+
 function cancelEdit(kind) {
   UI.editing[kind] = null;
   setEditMode(kind, false);
@@ -448,6 +515,7 @@ function cancelEdit(kind) {
   if (kind === 'time') clearTimeForm();
   if (kind === 'investment') clearInvestmentForm();
   if (kind === 'reserve') clearEmergencyForm();
+  if (kind === 'patrimony') clearPatrimonyForm();
   if (kind === 'credit') clearCreditForm();
 }
 
@@ -458,6 +526,8 @@ function renderAll() {
   renderFin();
   renderTime();
   renderInv();
+  renderPatrimony();
+  renderDashboard();
   renderBudget();
   renderEmergency();
   renderCredits();
@@ -518,7 +588,7 @@ function updateCatSelects() {
   }
 }
 function showCatEditor(type) {
-  showTab('orcamento', document.querySelector('.tab-btn:nth-child(5)') || document.querySelectorAll('.tab-btn')[3]);
+  showTab('orcamento', document.querySelector(".tab-btn[onclick*='orcamento']") || document.querySelectorAll('.tab-btn')[0]);
 }
 
 // ══════════════════════════════════════
@@ -1023,6 +1093,312 @@ function renderInv() {
       </div>`;
     }).join('');
   }
+}
+
+// ══════════════════════════════════════
+// PATRIMÓNIO
+// ══════════════════════════════════════
+function getPatrimonyCategories(type = '') {
+  S.patrimony = normalizePatrimony(S.patrimony);
+  return S.patrimony.categories.filter(c => !type || c.type === type);
+}
+
+function getPatrimonyCategory(id) {
+  return S.patrimony.categories.find(c => c.id === id) || null;
+}
+
+function getPatrimonyTypeLabel(type) {
+  return type === 'liability' ? 'Passivo' : 'Ativo';
+}
+
+function renderPatrimonyCategorySelects(selectedCat = '', selectedSub = '') {
+  const typeEl = document.getElementById('pat-type');
+  const catEl = document.getElementById('pat-category');
+  const subEl = document.getElementById('pat-subcat');
+  if (!typeEl || !catEl || !subEl) return;
+  const type = typeEl.value || 'asset';
+  const cats = getPatrimonyCategories(type);
+  const previousCat = selectedCat || catEl.value;
+  catEl.innerHTML = cats.map(c => `<option value="${esc(c.id)}">${esc(c.icon)} ${esc(c.name)}</option>`).join('');
+  if (previousCat && cats.some(c => c.id === previousCat)) catEl.value = previousCat;
+  if (!catEl.value && cats[0]) catEl.value = cats[0].id;
+  const cat = getPatrimonyCategory(catEl.value) || cats[0];
+  const subs = cat?.subs?.length ? cat.subs : ['Geral'];
+  const previousSub = selectedSub || subEl.value;
+  subEl.innerHTML = subs.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  if (previousSub && subs.includes(previousSub)) subEl.value = previousSub;
+}
+
+function addPatrimonyCategory() {
+  const type = document.getElementById('new-pat-type').value;
+  const iconEl = document.getElementById('new-pat-icon');
+  const nameEl = document.getElementById('new-pat-name');
+  const subsEl = document.getElementById('new-pat-subs');
+  const icon = iconEl.value.trim() || (type === 'liability' ? '🏦' : '💎');
+  const name = nameEl.value.trim();
+  const subs = subsEl.value.split(',').map(s => s.trim()).filter(Boolean);
+  if (!name) { highlight('new-pat-name'); return; }
+  const cats = S.patrimony.categories;
+  if (cats.some(c => c.type === type && c.name.toLowerCase() === name.toLowerCase())) {
+    toast('Categoria de património já existe');
+    return;
+  }
+  let id = slugify(name);
+  let n = 2;
+  while (cats.some(c => c.id === id)) id = `${slugify(name)}-${n++}`;
+  cats.push({ id, type, icon, name, subs: subs.length ? subs : ['Geral'] });
+  iconEl.value = '';
+  nameEl.value = '';
+  subsEl.value = '';
+  save();
+  renderPatrimonyCategorySelects(id);
+  renderPatrimonyCategoryEditor();
+  toast('Categoria criada', 'var(--blue)');
+}
+
+function removePatrimonyCategory(id) {
+  const cat = getPatrimonyCategory(id);
+  if (!cat) return;
+  const sameTypeCats = getPatrimonyCategories(cat.type);
+  if (sameTypeCats.length <= 1) {
+    toast('Mantém pelo menos uma categoria por tipo', 'var(--red)');
+    return;
+  }
+  const used = S.patrimony.items.some(i => i.categoryId === id);
+  if (used && !confirm(`A categoria "${cat.name}" tem itens. Remover e mover para outra categoria?`)) return;
+  const fallback = sameTypeCats.find(c => c.id !== id);
+  S.patrimony.items.forEach(i => {
+    if (i.categoryId === id) {
+      i.categoryId = fallback.id;
+      i.subcat = fallback.subs[0] || 'Geral';
+    }
+  });
+  S.patrimony.categories = S.patrimony.categories.filter(c => c.id !== id);
+  save();
+  renderPatrimony();
+  toast('Categoria removida');
+}
+
+function renderPatrimonyCategoryEditor() {
+  const el = document.getElementById('pat-category-editor');
+  if (!el) return;
+  el.innerHTML = S.patrimony.categories.map(c => `
+    <div class="cat-chip pat-cat-chip" title="${esc(c.subs.join(', '))}">
+      <span class="icon">${esc(c.icon)}</span>
+      <span>${esc(c.name)}</span>
+      <small>${getPatrimonyTypeLabel(c.type)}</small>
+      <button class="remove" onclick="removePatrimonyCategory('${jsStr(c.id)}')" title="Remover">×</button>
+    </div>
+  `).join('');
+}
+
+function addPatrimonyItem() {
+  const type = document.getElementById('pat-type').value;
+  const name = document.getElementById('pat-name').value.trim();
+  const categoryId = document.getElementById('pat-category').value;
+  const subcat = document.getElementById('pat-subcat').value || 'Geral';
+  const value = num('pat-value');
+  const date = document.getElementById('pat-date').value || today();
+  const note = document.getElementById('pat-note').value.trim();
+  if (!name) { highlight('pat-name'); return; }
+  if (!categoryId) { highlight('pat-category'); return; }
+  if (!value || value <= 0) { highlight('pat-value'); return; }
+  const payload = { id: UI.editing.patrimony || uid(), type, name, categoryId, subcat, value, date, note };
+  const idx = S.patrimony.items.findIndex(i => i.id === UI.editing.patrimony);
+  if (idx >= 0) S.patrimony.items[idx] = payload;
+  else S.patrimony.items.push(payload);
+  const wasEditing = Boolean(UI.editing.patrimony);
+  UI.editing.patrimony = null;
+  setEditMode('patrimony', false);
+  clearPatrimonyForm();
+  save();
+  renderPatrimony();
+  renderDashboard();
+  toast(wasEditing ? 'Património atualizado' : 'Item registado', type === 'asset' ? 'var(--teal)' : 'var(--red)');
+}
+
+function editPatrimonyItem(id) {
+  const item = S.patrimony.items.find(i => i.id === id);
+  if (!item) return;
+  UI.editing.patrimony = id;
+  document.getElementById('pat-type').value = item.type;
+  renderPatrimonyCategorySelects(item.categoryId, item.subcat);
+  document.getElementById('pat-name').value = item.name || '';
+  document.getElementById('pat-value').value = item.value || '';
+  document.getElementById('pat-date').value = item.date || today();
+  document.getElementById('pat-note').value = item.note || '';
+  setEditMode('patrimony', true);
+  document.getElementById('pat-name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function deletePatrimonyItem(id) {
+  if (!confirm('Eliminar este item de património?')) return;
+  S.patrimony.items = S.patrimony.items.filter(i => i.id !== id);
+  save();
+  renderPatrimony();
+  renderDashboard();
+  toast('Item eliminado');
+}
+
+function patrimonyTotals() {
+  const assets = S.patrimony.items.filter(i => i.type === 'asset').reduce((s,i) => s + i.value, 0);
+  const liabilities = S.patrimony.items.filter(i => i.type === 'liability').reduce((s,i) => s + i.value, 0);
+  return { assets, liabilities, net: assets - liabilities };
+}
+
+function renderPatrimony() {
+  normalizeState();
+  const root = document.getElementById('page-patrimonio');
+  if (!root) return;
+  renderPatrimonyCategorySelects();
+  renderPatrimonyCategoryEditor();
+  const totals = patrimonyTotals();
+  document.getElementById('pat-kpi-assets').textContent = fmt(totals.assets);
+  document.getElementById('pat-kpi-liabilities').textContent = fmt(totals.liabilities);
+  document.getElementById('pat-kpi-net').textContent = fmt(totals.net);
+  document.getElementById('pat-kpi-count').textContent = S.patrimony.items.length;
+
+  const byCat = {};
+  S.patrimony.items.forEach(item => {
+    const cat = getPatrimonyCategory(item.categoryId);
+    const key = `${item.type}|${item.categoryId}`;
+    if (!byCat[key]) byCat[key] = { label: `${cat?.icon || ''} ${cat?.name || 'Categoria'}`, type: item.type, value: 0 };
+    byCat[key].value += item.value;
+  });
+  const rows = Object.values(byCat).sort((a,b) => b.value - a.value);
+  const maxVal = Math.max(...rows.map(r => r.value), 0.01);
+  const bars = document.getElementById('pat-breakdown');
+  bars.innerHTML = rows.length ? rows.map(r => {
+    const color = r.type === 'asset' ? 'var(--teal)' : 'var(--red)';
+    return `<div class="bar-row">
+      <div class="bar-label">${esc(r.label)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(r.value/maxVal*100).toFixed(1)}%;background:${color}"></div></div>
+      <div class="bar-val">${fmt(r.value)}</div>
+    </div>`;
+  }).join('') : '<div style="color:var(--text3);font-size:0.82rem">Sem dados</div>';
+
+  const list = document.getElementById('pat-list');
+  const sorted = [...S.patrimony.items].sort((a,b) => b.value - a.value);
+  list.innerHTML = sorted.length ? sorted.map(item => {
+    const cat = getPatrimonyCategory(item.categoryId);
+    const isAsset = item.type === 'asset';
+    return `<div class="tx-row pat-row">
+      <div class="tx-icon" style="background:${isAsset ? 'var(--teal-d)' : 'var(--red-d)'}">${cat?.icon || (isAsset ? '💎' : '🏦')}</div>
+      <div>
+        <div class="tx-desc">${esc(item.name)}</div>
+        <div class="tx-meta"><span>${getPatrimonyTypeLabel(item.type)}</span><span class="tag" style="background:${isAsset ? 'var(--teal-d)' : 'var(--red-d)'};color:${isAsset ? 'var(--teal)' : 'var(--red)'}">${esc(cat?.name || 'Categoria')} · ${esc(item.subcat)}</span><span>${fmtDate(item.date)}</span>${item.note?`<span style="color:var(--text3);font-size:0.72rem">${esc(item.note.slice(0,36))}</span>`:''}</div>
+      </div>
+      <div class="mono ${isAsset ? 'c-teal' : 'c-red'}">${fmt(item.value)}</div>
+      <div class="row-actions">
+        <button class="btn btn-ghost btn-sm" onclick="editPatrimonyItem('${item.id}')" title="Editar">✎</button>
+        <button class="btn btn-danger btn-sm" onclick="deletePatrimonyItem('${item.id}')" title="Eliminar">×</button>
+      </div>
+    </div>`;
+  }).join('') : `<div class="empty"><div class="e-icon">◎</div>Sem itens de património</div>`;
+}
+
+// ══════════════════════════════════════
+// DASHBOARD GERAL
+// ══════════════════════════════════════
+function daysInMonth(year, month) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function monthStats(date = new Date()) {
+  const m = date.getMonth(), y = date.getFullYear();
+  const tx = S.transactions.filter(t => {
+    const d = toDate(t.date);
+    return d.getMonth() === m && d.getFullYear() === y;
+  });
+  const income = tx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const expenses = tx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const now = new Date();
+  const isCurrent = m === now.getMonth() && y === now.getFullYear();
+  const days = isCurrent ? Math.max(now.getDate(), 1) : daysInMonth(y, m);
+  return { income, expenses, saved: income - expenses, days, tx };
+}
+
+function wealthSnapshot() {
+  normalizeState();
+  const pat = patrimonyTotals();
+  const investments = S.investments.reduce((s,i) => s + i.qty * i.currPrice, 0);
+  const reserves = getEmergencyReserves().reduce((s,r) => s + r.currentAmount, 0);
+  const creditDebt = S.credits.reduce((s,c) => s + Math.max((c.total || 0) - (c.paid || 0), 0), 0);
+  const assets = pat.assets + investments + reserves;
+  const liabilities = pat.liabilities + creditDebt;
+  return { assets, liabilities, net: assets - liabilities, investments, reserves, patrimonyAssets: pat.assets, patrimonyLiabilities: pat.liabilities, creditDebt };
+}
+
+function renderDashboard() {
+  const root = document.getElementById('page-dashboard');
+  if (!root) return;
+  normalizeState();
+  const current = monthStats(new Date());
+  const previousDate = new Date();
+  previousDate.setMonth(previousDate.getMonth() - 1);
+  const previous = monthStats(previousDate);
+  const spendPerDay = current.expenses / current.days;
+  const savedPerDay = current.saved / current.days;
+  const prevSavedPerDay = previous.saved / previous.days;
+  const deltaSaved = savedPerDay - prevSavedPerDay;
+  const hasPrevious = previous.tx.length > 0;
+  const trendGood = hasPrevious ? deltaSaved >= 0 : current.saved >= 0;
+  const wealth = wealthSnapshot();
+  const savingRate = current.income > 0 ? (current.saved / current.income) * 100 : 0;
+  const ratio = wealth.liabilities > 0 ? wealth.assets / wealth.liabilities : null;
+
+  document.getElementById('dash-spend-day').textContent = fmt(spendPerDay);
+  document.getElementById('dash-spend-day-sub').textContent = `${fmt(current.expenses)} gastos em ${current.days} dias`;
+  document.getElementById('dash-saved-day').textContent = fmt(savedPerDay);
+  document.getElementById('dash-saved-day-sub').textContent = `${savingRate.toFixed(1)}% de taxa de poupança`;
+  document.getElementById('dash-assets-liabilities').textContent = `${fmt(wealth.assets)} / ${fmt(wealth.liabilities)}`;
+  document.getElementById('dash-assets-liabilities-sub').textContent = ratio === null ? 'sem passivo registado' : `${ratio.toFixed(2)}x ativo/passivo`;
+  document.getElementById('dash-trend').textContent = trendGood ? 'A evoluir' : 'A retroceder';
+  document.getElementById('dash-trend').style.color = trendGood ? 'var(--teal)' : 'var(--red)';
+  document.getElementById('dash-trend-sub').textContent = hasPrevious
+    ? `${deltaSaved >= 0 ? '+' : ''}${fmt(deltaSaved)} vs mês anterior`
+    : 'sem mês anterior para comparar';
+
+  document.getElementById('dash-net-worth').textContent = fmt(wealth.net);
+  document.getElementById('dash-month-income').textContent = fmt(current.income);
+  document.getElementById('dash-month-expenses').textContent = fmt(current.expenses);
+  document.getElementById('dash-credit-debt').textContent = fmt(wealth.creditDebt);
+  document.getElementById('dash-reserves').textContent = fmt(wealth.reserves);
+  document.getElementById('dash-investments').textContent = fmt(wealth.investments);
+
+  const categoryTotals = {};
+  current.tx.filter(t => t.type === 'expense').forEach(t => categoryTotals[t.cat] = (categoryTotals[t.cat] || 0) + t.amount);
+  const topCats = Object.entries(categoryTotals).sort((a,b) => b[1]-a[1]).slice(0,5);
+  const maxCat = Math.max(...topCats.map(([,v]) => v), 0.01);
+  const topEl = document.getElementById('dash-top-expenses');
+  topEl.innerHTML = topCats.length ? topCats.map(([cat, value]) => `<div class="bar-row">
+    <div class="bar-label">${esc(cat)}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${(value/maxCat*100).toFixed(1)}%;background:var(--red)"></div></div>
+    <div class="bar-val">${fmt(value)}</div>
+  </div>`).join('') : '<div style="color:var(--text3);font-size:0.82rem">Sem despesas este mês</div>';
+
+  const wealthRows = [
+    { label: 'Património ativo', value: wealth.patrimonyAssets, color: 'var(--teal)' },
+    { label: 'Investimentos', value: wealth.investments, color: 'var(--blue)' },
+    { label: 'Reservas', value: wealth.reserves, color: 'var(--gold)' },
+    { label: 'Créditos', value: wealth.creditDebt, color: 'var(--red)' },
+    { label: 'Outros passivos', value: wealth.patrimonyLiabilities, color: 'var(--purple)' }
+  ].filter(r => r.value > 0);
+  const maxWealth = Math.max(...wealthRows.map(r => r.value), 0.01);
+  document.getElementById('dash-wealth-breakdown').innerHTML = wealthRows.length ? wealthRows.map(r => `<div class="bar-row">
+    <div class="bar-label">${r.label}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${(r.value/maxWealth*100).toFixed(1)}%;background:${r.color}"></div></div>
+    <div class="bar-val">${fmt(r.value)}</div>
+  </div>`).join('') : '<div style="color:var(--text3);font-size:0.82rem">Sem património registado</div>';
+
+  const signals = document.getElementById('dash-signals');
+  const emergency = emergencyCalc();
+  signals.innerHTML = [
+    { label: 'Reserva', value: emergency.target > 0 ? `${emergency.progress.toFixed(0)}% concluído` : 'sem objetivo', tone: emergency.progress >= 100 ? 'good' : emergency.progress >= 50 ? 'warn' : 'bad' },
+    { label: 'Créditos ativos', value: `${S.credits.length}`, tone: S.credits.length ? 'warn' : 'good' },
+    { label: 'Registos de tempo', value: `${S.timeEntries.length}`, tone: S.timeEntries.length ? 'good' : 'warn' },
+    { label: 'Itens de património', value: `${S.patrimony.items.length}`, tone: S.patrimony.items.length ? 'good' : 'warn' }
+  ].map(s => `<div class="dash-signal ${s.tone}"><span>${s.label}</span><strong>${s.value}</strong></div>`).join('');
 }
 
 // ══════════════════════════════════════
@@ -1921,6 +2297,10 @@ function exportCsv() {
   S.timeEntries.forEach(e => rows.push(['tempo', e.id, e.mainCat, e.subCat, e.desc, e.date, '', e.hours, '', '', '', '', '', '', '', '', '', '', e.note]));
   S.investments.forEach(i => rows.push(['investimento', i.id, i.type, '', '', i.date, '', '', i.name, i.ticker, i.qty, i.buyPrice, i.currPrice, '', '', '', '', '', i.note]));
   S.budgets.forEach(b => rows.push(['orcamento', '', b.type, b.cat, '', '', b.limit, '', '', '', '', '', '', '', '', '', '', '', '']));
+  S.patrimony.items.forEach(i => {
+    const cat = getPatrimonyCategory(i.categoryId);
+    rows.push(['patrimonio', i.id, i.type, cat?.name || '', i.name, i.date, i.value, '', i.subcat, '', '', '', '', '', '', '', '', '', i.note]);
+  });
   getEmergencyReserves().forEach(r => {
     rows.push(['reserva', r.id, 'config', '', r.name, r.targetDate, r.currentAmount, '', r.location, '', '', '', '', r.monthlyExpenses, '', '', r.targetMonths, '', 'configuracao']);
     r.moves.forEach(m => rows.push(['reserva', m.id, m.type, r.name, m.note || '', m.date, m.amount, '', '', '', '', '', '', '', '', '', '', '', 'movimento']));
@@ -1937,6 +2317,7 @@ function applyImportedData(data) {
     if (Array.isArray(data[key])) S[key] = data[key];
   });
   if (data.emergency && typeof data.emergency === 'object') S.emergency = data.emergency;
+  if (data.patrimony && typeof data.patrimony === 'object') S.patrimony = data.patrimony;
   if (data.categories && typeof data.categories === 'object') S.categories = data.categories;
   normalizeState();
   saveLocal();
@@ -2435,10 +2816,14 @@ initCloud();
 document.getElementById('fin-date').value = today();
 document.getElementById('time-date').value = today();
 document.getElementById('inv-date').value = today();
+document.getElementById('pat-date').value = today();
 document.getElementById('cred-start').value = today();
 document.getElementById('res-move-date').value = today();
 renderTimeSubcats();
 renderFin();
+renderInv();
+renderPatrimony();
+renderDashboard();
 renderBudget();
 renderEmergency();
 renderCredits();
@@ -2446,6 +2831,7 @@ renderCredits();
 window.addEventListener('keydown', e => {
   if (e.key === 'Enter' && ['fin-desc','fin-amount'].includes(e.target.id)) addTransaction();
   if (e.key === 'Enter' && ['time-hours','time-desc'].includes(e.target.id)) addTimeEntry();
+  if (e.key === 'Enter' && ['pat-name','pat-value'].includes(e.target.id)) addPatrimonyItem();
   if (e.key === 'Enter' && ['res-move-amount','res-move-note'].includes(e.target.id)) addEmergencyMove();
 });
 
@@ -2463,6 +2849,8 @@ Object.assign(window, {
   addCredit,
   addEmergencyMove,
   addInvestment,
+  addPatrimonyCategory,
+  addPatrimonyItem,
   addTimeCategory,
   addTimeEntry,
   addTransaction,
@@ -2482,6 +2870,7 @@ Object.assign(window, {
   deleteEmergencyMove,
   deleteEmergencyReserve,
   deleteInvestment,
+  deletePatrimonyItem,
   deleteTimeEntry,
   deleteTransaction,
   driveAuth,
@@ -2491,6 +2880,7 @@ Object.assign(window, {
   editCredit,
   editEmergencyReserve,
   editInvestment,
+  editPatrimonyItem,
   editTimeEntry,
   editTransaction,
   exportBackup,
@@ -2498,9 +2888,13 @@ Object.assign(window, {
   importBackup,
   lockApp,
   removeCategory,
+  removePatrimonyCategory,
   removeTimeCategory,
+  renderDashboard,
   renderFin,
   renderEmergency,
+  renderPatrimony,
+  renderPatrimonyCategorySelects,
   renderTimeCategoryEditor,
   renderTimeMainCats,
   renderTimeSubcats,

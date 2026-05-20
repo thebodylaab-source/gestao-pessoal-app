@@ -35,9 +35,11 @@
 <!-- NAV -->
 <nav class="nav">
   <div class="nav-logo">Gestão <span>Pessoal</span></div>
+  <button class="tab-btn" onclick="showTab('dashboard',this)">📊 Dashboard</button>
   <button class="tab-btn active" onclick="showTab('financeiro',this)">💰 Financeiro</button>
   <button class="tab-btn" onclick="showTab('tempo',this)">⏱ Tempo</button>
   <button class="tab-btn" onclick="showTab('investimentos',this)">📈 Investimentos</button>
+  <button class="tab-btn" onclick="showTab('patrimonio',this)">💎 Património</button>
   <button class="tab-btn" onclick="showTab('orcamento',this)">🎯 Orçamento</button>
   <button class="tab-btn" onclick="showTab('reserva',this)">🛟 Reserva</button>
   <button class="tab-btn" onclick="showTab('creditos',this)">🏦 Créditos</button>
@@ -68,6 +70,65 @@
     <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="importBackup(this.files[0])">
   </div>
 </nav>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB: DASHBOARD -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="page" id="page-dashboard">
+  <div style="margin-bottom:8px">
+    <h1 class="sec-title">Dashboard <span>Geral</span></h1>
+    <p class="sec-sub">Resumo global · gastos · poupança · património</p>
+  </div>
+
+  <div class="dashboard-hero">
+    <div class="dash-metric primary">
+      <label>Média de gastos por dia</label>
+      <div class="big-val" id="dash-spend-day">0,00 €</div>
+      <div class="sub" id="dash-spend-day-sub">este mês</div>
+    </div>
+    <div class="dash-metric">
+      <label>Poupado em média por dia</label>
+      <div class="big-val" id="dash-saved-day">0,00 €</div>
+      <div class="sub" id="dash-saved-day-sub">taxa de poupança</div>
+    </div>
+    <div class="dash-metric">
+      <label>Passivo vs Ativo</label>
+      <div class="big-val smaller" id="dash-assets-liabilities">0,00 € / 0,00 €</div>
+      <div class="sub" id="dash-assets-liabilities-sub">sem passivo registado</div>
+    </div>
+    <div class="dash-metric">
+      <label>Tendência</label>
+      <div class="big-val" id="dash-trend">—</div>
+      <div class="sub" id="dash-trend-sub">sem histórico</div>
+    </div>
+  </div>
+
+  <div class="dash-mini-grid">
+    <div class="dash-mini"><label>Património líquido</label><strong id="dash-net-worth">0,00 €</strong></div>
+    <div class="dash-mini"><label>Receitas do mês</label><strong id="dash-month-income">0,00 €</strong></div>
+    <div class="dash-mini"><label>Despesas do mês</label><strong id="dash-month-expenses">0,00 €</strong></div>
+    <div class="dash-mini"><label>Dívida de créditos</label><strong id="dash-credit-debt">0,00 €</strong></div>
+    <div class="dash-mini"><label>Reservas</label><strong id="dash-reserves">0,00 €</strong></div>
+    <div class="dash-mini"><label>Investimentos</label><strong id="dash-investments">0,00 €</strong></div>
+  </div>
+
+  <div class="two-col" style="margin-top:24px">
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--red)"></span>Maiores gastos do mês</div>
+        <div class="bar-group" id="dash-top-expenses"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--gold)"></span>Sinais do sistema</div>
+        <div class="dash-signals" id="dash-signals"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Composição Ativo / Passivo</div>
+      <div class="bar-group" id="dash-wealth-breakdown"></div>
+    </div>
+  </div>
+</div>
 
 <!-- CLOUD LOGIN MODAL -->
 <div id="cloud-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center">
@@ -391,6 +452,105 @@
       <div class="card">
         <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Posições</div>
         <div class="tx-wrap" id="inv-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB: PATRIMÓNIO -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="page" id="page-patrimonio">
+  <div style="margin-bottom:8px">
+    <h1 class="sec-title">Mapa de <span>Património</span></h1>
+    <p class="sec-sub">Ativos · Passivos · Categorias · Subcategorias</p>
+  </div>
+
+  <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi-card" style="--accent:var(--teal);--accent-bg:var(--teal-d)">
+      <label>Ativos</label>
+      <div class="val" id="pat-kpi-assets">0,00 €</div>
+      <div class="sub">património registado</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--red);--accent-bg:var(--red-d)">
+      <label>Passivos</label>
+      <div class="val" id="pat-kpi-liabilities">0,00 €</div>
+      <div class="sub">obrigações registadas</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--gold);--accent-bg:var(--gold-d)">
+      <label>Líquido</label>
+      <div class="val" id="pat-kpi-net">0,00 €</div>
+      <div class="sub">ativos - passivos</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--blue);--accent-bg:var(--blue-d)">
+      <label>Itens</label>
+      <div class="val" id="pat-kpi-count">0</div>
+      <div class="sub">registados</div>
+    </div>
+  </div>
+
+  <div class="two-col" style="margin-top:24px">
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Registar Património</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Tipo</label>
+            <select id="pat-type" onchange="renderPatrimonyCategorySelects()">
+              <option value="asset">Ativo</option>
+              <option value="liability">Passivo</option>
+            </select>
+          </div>
+          <div class="field"><label>Nome</label><input type="text" id="pat-name" placeholder="ex: Conta poupança, carro, imóvel"></div>
+          <div class="form-row">
+            <div class="field">
+              <label>Categoria</label>
+              <select id="pat-category" onchange="renderPatrimonyCategorySelects()"></select>
+            </div>
+            <div class="field">
+              <label>Subcategoria</label>
+              <select id="pat-subcat"></select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field"><label>Valor (€)</label><input type="number" id="pat-value" placeholder="1000" min="0.01" step="0.01"></div>
+            <div class="field"><label>Data</label><input type="date" id="pat-date"></div>
+          </div>
+          <div class="field"><label>Nota</label><textarea id="pat-note" placeholder="ex: banco, avaliação, observações…" style="min-height:50px"></textarea></div>
+          <button class="btn btn-primary btn-full" id="pat-submit" onclick="addPatrimonyItem()">+ Registar</button>
+          <button class="btn btn-ghost btn-full" id="pat-cancel-edit" onclick="cancelEdit('patrimony')" style="display:none">Cancelar edição</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Categorias de Património</div>
+        <div class="form-grid">
+          <div class="form-row">
+            <div class="field">
+              <label>Tipo</label>
+              <select id="new-pat-type">
+                <option value="asset">Ativo</option>
+                <option value="liability">Passivo</option>
+              </select>
+            </div>
+            <div class="field"><label>Ícone</label><input type="text" id="new-pat-icon" placeholder="💎" maxlength="4"></div>
+          </div>
+          <div class="field"><label>Nome</label><input type="text" id="new-pat-name" placeholder="ex: Obras de arte"></div>
+          <div class="field"><label>Subcategorias</label><input type="text" id="new-pat-subs" placeholder="ex: Quadro, Escultura, Coleção"></div>
+          <button class="btn btn-ghost btn-full" onclick="addPatrimonyCategory()">+ Criar Categoria</button>
+          <div class="cat-editor" id="pat-category-editor"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--gold)"></span>Distribuição</div>
+        <div class="bar-group" id="pat-breakdown"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Itens de Património</div>
+        <div class="tx-wrap" id="pat-list"></div>
       </div>
     </div>
   </div>
