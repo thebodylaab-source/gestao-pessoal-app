@@ -1958,7 +1958,7 @@ function addCredit() {
   const total    = num('cred-total');
   const paid     = num('cred-paid') || 0;
   const monthly  = num('cred-monthly');
-  const remaining= parseInt(document.getElementById('cred-remaining').value);
+  const remaining= parseInt(document.getElementById('cred-remaining').value, 10);
   const start    = document.getElementById('cred-start').value;
   const rate     = num('cred-rate') || 0;
   const note     = document.getElementById('cred-note').value.trim();
@@ -2026,7 +2026,7 @@ function renderCredits() {
     const pctPaid = c.total > 0 ? Math.min((c.paid / c.total) * 100, 100) : 0;
     const endDate = creditEndDate(c);
     const endStr  = endDate ? endDate.toLocaleDateString('pt-PT', { month:'long', year:'numeric' }) : '—';
-    const yearsLeft = endDate ? ((endDate - new Date()) / (1000*60*60*24*365.25)).toFixed(1) : '—';
+    const yearsLeft = creditYearsLeft(c);
     const color = CRED_COLORS[idx % CRED_COLORS.length];
     return `<div class="cred-card" style="border-top:3px solid ${color}">
       <div class="cred-card-header">
@@ -2044,7 +2044,7 @@ function renderCredits() {
         <div class="cred-stat"><label>Total Pago</label><div class="v" style="color:var(--teal)">${fmt(c.paid)}</div></div>
         <div class="cred-stat"><label>Em Dívida</label><div class="v" style="color:var(--red)">${fmt(outstanding)}</div></div>
         <div class="cred-stat"><label>Prestação</label><div class="v" style="color:var(--gold)">${fmt(c.monthly)}/mês</div></div>
-        <div class="cred-stat"><label>Prestações Falta</label><div class="v">${c.remaining}</div></div>
+        <div class="cred-stat"><label>Prestações Falta</label><div class="v">${remainingInstallments(c)}</div></div>
         <div class="cred-stat"><label>Anos Restantes</label><div class="v" style="color:var(--blue)">${yearsLeft !== '—' ? yearsLeft + ' anos' : '—'}</div></div>
       </div>
       <div class="cred-card-footer">
@@ -2060,10 +2060,19 @@ function renderCredits() {
 }
 
 function creditEndDate(c) {
-  if (!c.start || !c.remaining) return null;
-  const d = toDate(c.start);
-  d.setMonth(d.getMonth() + (c.remaining));
+  if (!c.remaining) return null;
+  const d = toDate(today());
+  d.setMonth(d.getMonth() + remainingInstallments(c));
   return d;
+}
+
+function remainingInstallments(c) {
+  return Math.max(0, parseInt(c?.remaining, 10) || 0);
+}
+
+function creditYearsLeft(c) {
+  const remaining = remainingInstallments(c);
+  return remaining > 0 ? (remaining / 12).toFixed(1) : '0.0';
 }
 
 function drawCreditTimeline() {
