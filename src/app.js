@@ -23,7 +23,7 @@ function showLockError(message = 'Password incorreta') {
   input.style.borderColor = '#e05c5c';
   setTimeout(() => {
     err.style.opacity = '0';
-    input.style.borderColor = '#2a2a36';
+    input.style.borderColor = 'var(--border)';
   }, 2500);
 }
 
@@ -787,6 +787,16 @@ function renderTimeSubcats(selected = '') {
   if (previous && subs.includes(previous)) subSelect.value = previous;
 }
 
+function renderTimeSubcategorySelect(selected = '') {
+  const select = document.getElementById('time-sub-add-cat');
+  if (!select) return;
+  const cats = getTimeCategories();
+  const previous = selected || select.value;
+  select.innerHTML = cats.map(c => `<option value="${esc(c.id)}">${esc(timeCatLabel(c))}</option>`).join('');
+  if (previous && cats.some(c => c.id === previous)) select.value = previous;
+  if (!select.value && cats[0]) select.value = cats[0].id;
+}
+
 function addTimeCategory() {
   const iconEl = document.getElementById('new-time-icon');
   const nameEl = document.getElementById('new-time-name');
@@ -807,10 +817,36 @@ function addTimeCategory() {
   subsEl.value = '';
   save();
   renderTimeMainCats(id);
+  renderTimeSubcategorySelect(id);
   renderTimeSubcats();
   renderTimeCategoryEditor();
   renderTime();
   toast('Categoria de tempo adicionada', 'var(--blue)');
+}
+
+function addTimeSubcategory() {
+  const select = document.getElementById('time-sub-add-cat');
+  const input = document.getElementById('new-time-sub');
+  const catId = select?.value;
+  const name = input?.value.trim();
+  const cats = getTimeCategories();
+  const cat = cats.find(c => c.id === catId);
+  if (!cat) { toast('Escolha uma categoria', 'var(--red)'); return; }
+  if (!name) { highlight('new-time-sub'); return; }
+  cat.subs = Array.isArray(cat.subs) ? cat.subs : ['Geral'];
+  if (cat.subs.some(s => s.toLowerCase() === name.toLowerCase())) {
+    toast('Sub-categoria ja existe', 'var(--gold)');
+    return;
+  }
+  cat.subs.push(name);
+  if (input) input.value = '';
+  save();
+  renderTimeSubcategorySelect(catId);
+  if (document.getElementById('time-main-cat')?.value === catId) renderTimeSubcats(name);
+  else renderTimeSubcats();
+  renderTimeCategoryEditor();
+  renderTime();
+  toast('Sub-categoria adicionada', 'var(--blue)');
 }
 
 function removeTimeCategory(id) {
@@ -819,6 +855,7 @@ function removeTimeCategory(id) {
   if (isUsed && !confirm(`A categoria "${cat.name}" tem registos. Remover mesmo assim?`)) return;
   S.categories.time = getTimeCategories().filter(c => c.id !== id);
   save();
+  renderTimeSubcategorySelect();
   renderTimeSubcats();
   renderTimeCategoryEditor();
   renderTime();
@@ -828,12 +865,20 @@ function removeTimeCategory(id) {
 function renderTimeCategoryEditor() {
   const el = document.getElementById('cat-time-editor');
   if (!el) return;
+  renderTimeSubcategorySelect();
   el.innerHTML = getTimeCategories().map(c => `
-    <div class="cat-chip time-cat-chip" title="${esc(c.subs.join(', '))}">
-      <span class="icon">${esc(c.icon)}</span>
-      <span>${esc(c.name)}</span>
-      <small>${c.subs.length}</small>
-      <button class="remove" onclick="removeTimeCategory('${jsStr(c.id)}')" title="Remover">×</button>
+    <div class="time-cat-panel">
+      <div class="time-cat-panel-head">
+        <div class="time-cat-title">
+          <span class="icon">${esc(c.icon)}</span>
+          <span>${esc(c.name)}</span>
+        </div>
+        <span class="time-cat-count">${c.subs.length} sub</span>
+        <button class="remove btn btn-danger btn-sm" onclick="removeTimeCategory('${jsStr(c.id)}')" title="Remover">×</button>
+      </div>
+      <div class="time-sub-chip-list">
+        ${(c.subs || ['Geral']).map(s => `<span class="time-sub-chip">${esc(s)}</span>`).join('')}
+      </div>
     </div>
   `).join('');
 }
@@ -947,6 +992,40 @@ function renderTime() {
       <div class="bar-val">${fmtH(h)}</div>
     </div>`;
   }).join('') : '<div style="color:var(--text3);font-size:0.82rem">Sem dados</div>';
+
+  // Dashboard by category and subcategory
+  const categoryDash = document.getElementById('time-category-dashboard');
+  if (categoryDash) {
+    const groups = cats.map(cat => {
+      const catEntries = entries.filter(e => e.mainCat === cat.id);
+      const catTotal = catEntries.reduce((s,e) => s + e.hours, 0);
+      const subMap = {};
+      catEntries.forEach(e => {
+        const sub = e.subCat || 'Geral';
+        subMap[sub] = (subMap[sub] || 0) + e.hours;
+      });
+      const rows = Object.entries(subMap).sort((a,b) => b[1] - a[1]);
+      return { cat, catTotal, rows };
+    }).sort((a,b) => b.catTotal - a.catTotal);
+
+    categoryDash.innerHTML = total ? groups.map(({ cat, catTotal, rows }) => {
+      const maxSub = Math.max(...rows.map(([,h]) => h), 0.01);
+      const rowHtml = rows.length ? rows.map(([sub, h]) => `
+        <div class="time-dash-row">
+          <div class="time-dash-label">${esc(sub)}</div>
+          <div class="time-dash-track"><div class="time-dash-fill" style="width:${(h / maxSub * 100).toFixed(1)}%;background:${cat.color || 'var(--blue)'}"></div></div>
+          <div class="time-dash-val">${fmtH(h)} · ${pct(h, total)}</div>
+        </div>
+      `).join('') : '<div class="time-dash-empty">Sem registos neste mes</div>';
+      return `<div class="time-dash-group">
+        <div class="time-dash-head">
+          <div class="time-dash-title"><span>${esc(cat.icon || '⏱')}</span><span>${esc(cat.name)}</span></div>
+          <strong style="color:${cat.color || 'var(--blue)'}">${fmtH(catTotal)}</strong>
+        </div>
+        <div class="time-dash-subrows">${rowHtml}</div>
+      </div>`;
+    }).join('') : '<div class="time-dash-empty">Sem dados neste mes</div>';
+  }
 
   // List
   const list = document.getElementById('time-list');
@@ -1801,7 +1880,7 @@ function renderBudget() {
 // ══════════════════════════════════════
 // CHARTS
 // ══════════════════════════════════════
-const CAT_COLORS = ['#e05c5c','#d4a843','#3dbf9b','#5b8dee','#9b72d4','#c8a96e','#e0855c','#5cb8e0','#72d4a5','#d472a8'];
+const CAT_COLORS = ['#c94040','#b98718','#138b73','#2f68d8','#7a55c7','#a36f3f','#cf6b4a','#2487b4','#2a9563','#b14f84'];
 
 function drawDonut(canvasId, data, colors) {
   const canvas = document.getElementById(canvasId);
@@ -1811,7 +1890,7 @@ function drawDonut(canvasId, data, colors) {
   ctx.clearRect(0, 0, W, H);
   const entries = Object.entries(data).filter(([,v]) => v > 0);
   if (!entries.length) {
-    ctx.fillStyle = '#2a2a36';
+    ctx.fillStyle = '#e7eaf1';
     ctx.beginPath();
     ctx.arc(W/2, H/2, W*0.38, 0, Math.PI*2);
     ctx.arc(W/2, H/2, W*0.22, 0, Math.PI*2, true);
@@ -1886,16 +1965,16 @@ function drawLineChart(canvasId, transactions) {
   const maxVal = Math.max(...incomeData, ...expenseData, 1);
 
   // Grid
-  ctx.strokeStyle = '#2a2a36'; ctx.lineWidth = 1;
+  ctx.strokeStyle = '#d9deea'; ctx.lineWidth = 1;
   for (let i=0;i<=4;i++) {
     const y2 = pad.t + chartH - (i/4) * chartH;
     ctx.beginPath(); ctx.moveTo(pad.l, y2); ctx.lineTo(W - pad.r, y2); ctx.stroke();
-    ctx.fillStyle = '#4a4858'; ctx.font = '11px Courier New,monospace';
+    ctx.fillStyle = '#9aa3b5'; ctx.font = '11px Courier New,monospace';
     ctx.fillText(Math.round((i/4)*maxVal) + '€', 4, y2 + 4);
   }
 
   // X labels
-  ctx.fillStyle = '#4a4858'; ctx.font = '11px Courier New,monospace';
+  ctx.fillStyle = '#9aa3b5'; ctx.font = '11px Courier New,monospace';
   labels.forEach((lbl, i) => {
     const x2 = pad.l + (i / (labels.length-1||1)) * chartW;
     ctx.fillText(lbl, x2 - 12, H - 8);
@@ -1926,14 +2005,14 @@ function drawLineChart(canvasId, transactions) {
     });
   };
 
-  drawLine(expenseData, '#e05c5c', 'rgba(224,92,92,0.07)');
-  drawLine(incomeData, '#3dbf9b', 'rgba(61,191,155,0.07)');
+  drawLine(expenseData, '#c94040', 'rgba(201,64,64,0.08)');
+  drawLine(incomeData, '#138b73', 'rgba(19,139,115,0.08)');
 
   // Legend
-  ctx.fillStyle = '#3dbf9b'; ctx.fillRect(W-100, 10, 10, 3);
-  ctx.fillStyle = '#7a7888'; ctx.font = '11px Arial,sans-serif'; ctx.fillText('Receitas', W-86, 14);
-  ctx.fillStyle = '#e05c5c'; ctx.fillRect(W-100, 22, 10, 3);
-  ctx.fillStyle = '#7a7888'; ctx.fillText('Despesas', W-86, 26);
+  ctx.fillStyle = '#138b73'; ctx.fillRect(W-100, 10, 10, 3);
+  ctx.fillStyle = '#667085'; ctx.font = '11px Arial,sans-serif'; ctx.fillText('Receitas', W-86, 14);
+  ctx.fillStyle = '#c94040'; ctx.fillRect(W-100, 22, 10, 3);
+  ctx.fillStyle = '#667085'; ctx.fillText('Despesas', W-86, 26);
 }
 
 // ══════════════════════════════════════
@@ -2126,42 +2205,42 @@ function drawCreditTimeline() {
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
   const xForDate = d => pad.l + ((d - start) / totalMs) * trackW;
 
-  ctx.fillStyle = '#111118';
+  ctx.fillStyle = '#ffffff';
   roundRect(ctx, 0, 0, W, H, 12);
   ctx.fill();
 
   // ── background track ──
-  ctx.fillStyle = '#22222c';
+  ctx.fillStyle = '#e7eaf1';
   roundRect(ctx, pad.l, axisY, trackW, 5, 3);
   ctx.fill();
 
   // ── year ticks ──
-  ctx.fillStyle = '#4a4858';
+  ctx.fillStyle = '#9aa3b5';
   ctx.font = '13px Courier New,monospace';
   ctx.textAlign = 'center';
   for (let y = now.getFullYear(); y <= now.getFullYear() + 10; y++) {
     const d = new Date(y, 0, 1);
     const x = xForDate(d);
-    ctx.fillStyle = y === now.getFullYear() ? '#363645' : '#24242f';
+    ctx.fillStyle = y === now.getFullYear() ? '#c6cfdf' : '#e7eaf1';
     ctx.fillRect(x, pad.t - 12, 1, chartBottom - pad.t + 22);
-    ctx.fillStyle = y === now.getFullYear() ? '#d4a843' : '#9896a8';
+    ctx.fillStyle = y === now.getFullYear() ? '#b98718' : '#667085';
     ctx.fillText(y, x, axisY - 12);
   }
 
   // ── "today" marker ──
   const nowX = xForDate(now);
-  ctx.strokeStyle = '#d4a843';
+  ctx.strokeStyle = '#b98718';
   ctx.lineWidth = 2;
   ctx.setLineDash([6, 5]);
   ctx.beginPath(); ctx.moveTo(nowX, pad.t - 18); ctx.lineTo(nowX, chartBottom + 12); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = '#d4a843';
+  ctx.fillStyle = '#b98718';
   ctx.font = '12px Courier New,monospace';
   ctx.textAlign = 'center';
   ctx.fillText('HOJE', nowX, chartBottom + 34);
 
   if (!credits.length) {
-    ctx.fillStyle = '#4a4858';
+    ctx.fillStyle = '#9aa3b5';
     ctx.font = '16px Arial,sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Adicione créditos para ver a linha temporal', W/2, H/2);
@@ -2184,15 +2263,15 @@ function drawCreditTimeline() {
     const paidW = barW * pctPaid;
     const outstanding = Math.max((c.total || 0) - (c.paid || 0), 0);
 
-    ctx.fillStyle = idx % 2 === 0 ? '#15151d' : '#111118';
+    ctx.fillStyle = idx % 2 === 0 ? '#f8fafc' : '#ffffff';
     roundRect(ctx, pad.l - 12, y2 - 9, trackW + 24, laneH + 18, 10);
     ctx.fill();
 
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#e8e6f0';
+    ctx.fillStyle = '#182033';
     ctx.font = '600 14px Arial,sans-serif';
     ctx.fillText(`${CRED_ICONS[c.type]||'📦'} ${c.name.slice(0,24)}`, 18, y2 + 7);
-    ctx.fillStyle = '#9896a8';
+    ctx.fillStyle = '#667085';
     ctx.font = '12px Courier New,monospace';
     ctx.fillText(`${shortMoney(outstanding)} em dívida · ${fmt(c.monthly).replace(',00 €','€')}/mês`, 18, y2 + 27);
 
@@ -2210,9 +2289,9 @@ function drawCreditTimeline() {
 
     ctx.font = '12px Courier New,monospace';
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#e8e6f0';
+    ctx.fillStyle = '#182033';
     if (barW > 150) ctx.fillText(`${(pctPaid * 100).toFixed(0)}% pago`, sx + 12, y2 + 21);
-    ctx.fillStyle = '#9896a8';
+    ctx.fillStyle = '#667085';
     ctx.textAlign = 'right';
     if (barW > 230) ctx.fillText(`${shortMoney(outstanding)} por pagar`, ex - 12, y2 + 21);
 
@@ -2221,7 +2300,7 @@ function drawCreditTimeline() {
     ctx.arc(Math.min(ex, pad.l + trackW), y2 + laneH/2, 7, 0, Math.PI*2);
     ctx.fillStyle = color;
     ctx.fill();
-    ctx.strokeStyle = '#0a0a0f';
+    ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.stroke();
 
@@ -2238,19 +2317,19 @@ function drawCreditTimeline() {
   const legendY = H - 24;
   ctx.textAlign = 'left';
   ctx.font = '12px Arial,sans-serif';
-  ctx.fillStyle = '#9896a8';
+  ctx.fillStyle = '#667085';
   ctx.fillText('Legenda:', 18, legendY);
-  ctx.fillStyle = '#3dbf9b';
+  ctx.fillStyle = '#138b73';
   roundRect(ctx, 82, legendY - 10, 24, 8, 4); ctx.fill();
-  ctx.fillStyle = '#9896a8';
+  ctx.fillStyle = '#667085';
   ctx.fillText('pago', 112, legendY);
-  ctx.fillStyle = '#3dbf9b36';
+  ctx.fillStyle = '#138b7336';
   roundRect(ctx, 160, legendY - 10, 24, 8, 4); ctx.fill();
-  ctx.fillStyle = '#9896a8';
+  ctx.fillStyle = '#667085';
   ctx.fillText('por pagar', 190, legendY);
-  ctx.fillStyle = '#d4a843';
+  ctx.fillStyle = '#b98718';
   ctx.beginPath(); ctx.arc(284, legendY - 6, 5, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#9896a8';
+  ctx.fillStyle = '#667085';
   ctx.fillText('data prevista de liquidação', 296, legendY);
 }
 
@@ -2829,6 +2908,7 @@ document.getElementById('pat-date').value = today();
 document.getElementById('cred-start').value = today();
 document.getElementById('res-move-date').value = today();
 renderTimeSubcats();
+renderTimeSubcategorySelect();
 renderFin();
 renderInv();
 renderPatrimony();
@@ -2862,6 +2942,7 @@ Object.assign(window, {
   addPatrimonyItem,
   addTimeCategory,
   addTimeEntry,
+  addTimeSubcategory,
   addTransaction,
   cancelEdit,
   changeMonth,
@@ -2906,6 +2987,7 @@ Object.assign(window, {
   renderPatrimonyCategorySelects,
   renderTimeCategoryEditor,
   renderTimeMainCats,
+  renderTimeSubcategorySelect,
   renderTimeSubcats,
   saveEmergencySettings,
   saveDriveConfig,
