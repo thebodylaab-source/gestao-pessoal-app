@@ -251,6 +251,7 @@
 
   <!-- TWO COL: FORM + LIST -->
   <div class="two-col">
+    <div style="display:flex;flex-direction:column;gap:20px">
     <!-- FORM -->
     <div class="card">
       <div class="card-title"><span class="dot"></span>Nova Transação</div>
@@ -267,13 +268,59 @@
           <div class="field"><label>Valor (€)</label><input type="number" id="fin-amount" placeholder="0,00" min="0.01" step="0.01"></div>
           <div class="field"><label>Data</label><input type="date" id="fin-date"></div>
         </div>
-        <div class="field">
-          <label>Categoria <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="showCatEditor('expense')">✏ Editar</button></label>
-          <select id="fin-cat"></select>
+        <div class="form-row">
+          <div class="field">
+            <label>Categoria</label>
+            <select id="fin-cat" onchange="renderFinSubcats()"></select>
+          </div>
+          <div class="field">
+            <label>Sub-categoria</label>
+            <select id="fin-sub-cat"></select>
+          </div>
         </div>
         <div class="field"><label>Nota (opcional)</label><textarea id="fin-note" placeholder="Detalhes…" style="min-height:50px"></textarea></div>
         <button class="btn btn-primary btn-full" id="fin-submit" onclick="addTransaction()">+ Adicionar</button>
         <button class="btn btn-ghost btn-full" id="fin-cancel-edit" onclick="cancelEdit('transaction')" style="display:none">Cancelar edição</button>
+      </div>
+    </div>
+
+      <!-- FINANCE CATEGORIES -->
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--gold)"></span>Categorias Financeiras</div>
+        <div class="finance-cat-section">
+          <label class="mini-label">Despesas</label>
+          <div class="form-row">
+            <div class="field"><label>Icone</label><input type="text" id="new-fin-exp-icon" placeholder="🛒" maxlength="4"></div>
+            <div class="field"><label>Nome</label><input type="text" id="new-fin-exp-name" placeholder="ex: Alimentacao"></div>
+          </div>
+          <div class="field"><label>Sub-categorias</label><input type="text" id="new-fin-exp-subs" placeholder="ex: Mercado, Talho, Suplementos"></div>
+          <button class="btn btn-ghost btn-full" onclick="addCategory('expense','fin')">+ Criar Categoria</button>
+          <div class="finance-subcat-admin">
+            <div class="form-row">
+              <div class="field"><label>Categoria</label><select id="fin-exp-sub-add-cat"></select></div>
+              <div class="field"><label>Nova Sub-categoria</label><input type="text" id="new-fin-exp-sub" placeholder="ex: Mercado"></div>
+            </div>
+            <button class="btn btn-ghost btn-full" onclick="addFinanceSubcategory('expense')">+ Adicionar Sub-categoria</button>
+          </div>
+          <div class="cat-editor finance-cat-editor" id="fin-cat-expense-editor"></div>
+        </div>
+        <div class="finance-cat-section">
+          <label class="mini-label">Receitas</label>
+          <div class="form-row">
+            <div class="field"><label>Icone</label><input type="text" id="new-fin-inc-icon" placeholder="💼" maxlength="4"></div>
+            <div class="field"><label>Nome</label><input type="text" id="new-fin-inc-name" placeholder="ex: Consultoria"></div>
+          </div>
+          <div class="field"><label>Sub-categorias</label><input type="text" id="new-fin-inc-subs" placeholder="ex: Mensal, Extra, Bonus"></div>
+          <button class="btn btn-ghost btn-full" onclick="addCategory('income','fin')">+ Criar Categoria</button>
+          <div class="finance-subcat-admin">
+            <div class="form-row">
+              <div class="field"><label>Categoria</label><select id="fin-inc-sub-add-cat"></select></div>
+              <div class="field"><label>Nova Sub-categoria</label><input type="text" id="new-fin-inc-sub" placeholder="ex: Extra"></div>
+            </div>
+            <button class="btn btn-ghost btn-full" onclick="addFinanceSubcategory('income')">+ Adicionar Sub-categoria</button>
+          </div>
+          <div class="cat-editor finance-cat-editor" id="fin-cat-income-editor"></div>
+        </div>
       </div>
     </div>
 
@@ -286,6 +333,10 @@
       <div class="card">
         <div class="card-title"><span class="dot" style="background:var(--red)"></span>Despesas vs Orçamento por Categoria</div>
         <div class="bar-group" id="fin-cat-bars"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot" style="background:var(--gold)"></span>Despesas por Sub-categoria</div>
+        <div class="bar-group" id="fin-subcat-bars"></div>
       </div>
     </div>
   </div>

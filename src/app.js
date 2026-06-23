@@ -213,6 +213,62 @@ function normalizeTimeCategories(input) {
   return normalized.length ? normalized : [{ id: 'geral', icon: '⏱', name: 'Geral', color: 'var(--blue)', subs: ['Geral'] }];
 }
 
+function cleanFinanceCategoryName(name) {
+  const fixes = {
+    'AlimentaÃ§Ã£o': 'Alimentação',
+    'HabitaÃ§Ã£o': 'Habitação',
+    'SaÃºde': 'Saúde',
+    'VestuÃ¡rio': 'Vestuário',
+    'EducaÃ§Ã£o': 'Educação',
+    'RestauraÃ§Ã£o': 'Restauração',
+    'SalÃ¡rio': 'Salário'
+  };
+  return fixes[name] || name;
+}
+
+function normalizeFinanceCategories(input, fallback = []) {
+  const iconFixes = {
+    'ðŸ›’': '🛒',
+    'ðŸš—': '🚗',
+    'ðŸ ': '🏠',
+    'ðŸ’Š': '💊',
+    'ðŸŽ¬': '🎬',
+    'ðŸ‘•': '👕',
+    'ðŸ“š': '📚',
+    'ðŸ’»': '💻',
+    'ðŸ½ï¸': '🍽️',
+    'ðŸ“¦': '📦',
+    'ðŸ’¼': '💼',
+    'ðŸ”§': '🔧',
+    'ðŸ“ˆ': '📈',
+    'ðŸŽ': '🎁'
+  };
+  const cleanIcon = icon => iconFixes[icon] || icon || '📦';
+  const source = Array.isArray(input) ? input : fallback;
+  const normalized = source.map((cat, index) => {
+    const fb = fallback[index] || {};
+    const rawName = typeof cat === 'string' ? cat : (cat?.name || fb.name || 'Categoria');
+    const name = cleanFinanceCategoryName(rawName);
+    const subs = Array.isArray(cat?.subs)
+      ? cat.subs.map(s => String(s).trim()).filter(Boolean)
+      : ['Geral'];
+    return {
+      icon: cleanIcon(cat?.icon || fb.icon),
+      name,
+      subs: subs.length ? subs : ['Geral']
+    };
+  });
+  return normalized.length ? normalized : fallback.map(c => ({ ...c, icon: cleanIcon(c.icon), subs: ['Geral'] }));
+}
+
+function normalizeTransactions(input) {
+  return Array.isArray(input) ? input.map(t => ({
+    ...t,
+    cat: cleanFinanceCategoryName(t?.cat || ''),
+    subCat: t?.subCat || t?.subcat || 'Geral'
+  })) : [];
+}
+
 function normalizeEmergencyReserve(reserve, index = 0) {
   const fallbackId = index === 0 ? 'principal' : `reserva-${index + 1}`;
   return {
@@ -295,9 +351,11 @@ function normalizeState() {
   S.patrimony = normalizePatrimony(S.patrimony);
   const defaultCategories = createDefaultCategories();
   if (!S.categories || typeof S.categories !== 'object') S.categories = defaultCategories;
-  S.categories.expense = Array.isArray(S.categories.expense) ? S.categories.expense : defaultCategories.expense;
-  S.categories.income = Array.isArray(S.categories.income) ? S.categories.income : defaultCategories.income;
+  S.categories.expense = normalizeFinanceCategories(S.categories.expense, defaultCategories.expense);
+  S.categories.income = normalizeFinanceCategories(S.categories.income, defaultCategories.income);
   S.categories.time = normalizeTimeCategories(S.categories.time);
+  S.transactions = normalizeTransactions(S.transactions);
+  S.budgets = Array.isArray(S.budgets) ? S.budgets.map(b => ({ ...b, cat: cleanFinanceCategoryName(b.cat || '') })) : [];
 }
 
 function storageKeyForUser(userId) {
@@ -536,56 +594,179 @@ function renderAll() {
 // ══════════════════════════════════════
 // CATEGORIES
 // ══════════════════════════════════════
-function getCategories(type) { return S.categories[type] || []; }
+function getCategories(type) {
+  if (type === 'expense' || type === 'income') {
+    const defaults = createDefaultCategories()[type] || [];
+    S.categories[type] = normalizeFinanceCategories(S.categories[type], defaults);
+  }
+  return S.categories[type] || [];
+}
 function getCatIcon(type, name) {
   const c = getCategories(type).find(c => c.name === name);
   return c ? c.icon : '📦';
 }
 
-function addCategory(type) {
-  const icon = document.getElementById('new-' + (type==='expense'?'exp':'inc') + '-icon').value.trim() || '📦';
-  const name = document.getElementById('new-' + (type==='expense'?'exp':'inc') + '-name').value.trim();
-  if (!name) return;
-  if (S.categories[type].find(c => c.name === name)) { toast('Categoria já existe'); return; }
-  S.categories[type].push({ icon, name });
-  document.getElementById('new-' + (type==='expense'?'exp':'inc') + '-icon').value = '';
-  document.getElementById('new-' + (type==='expense'?'exp':'inc') + '-name').value = '';
+function getFinanceCat(type, name) {
+  return getCategories(type).find(c => c.name === name) || { icon: '📦', name, subs: ['Geral'] };
+}
+
+function financeShort(type) {
+  return type === 'expense' ? 'exp' : 'inc';
+}
+
+function financeCategoryInputIds(type, area = '') {
+  const short = financeShort(type);
+  const base = area ? `new-${area}-${short}` : `new-${short}`;
+  return { icon: `${base}-icon`, name: `${base}-name`, subs: `${base}-subs` };
+}
+
+function addCategory(type, area = '') {
+  const ids = financeCategoryInputIds(type, area);
+  const iconEl = document.getElementById(ids.icon);
+  const nameEl = document.getElementById(ids.name);
+  const subsEl = document.getElementById(ids.subs);
+  const icon = iconEl?.value.trim() || '📦';
+  const name = nameEl?.value.trim();
+  const subs = (subsEl?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!name) { if (nameEl) highlight(ids.name); return; }
+  const cats = getCategories(type);
+  if (cats.find(c => c.name.toLowerCase() === name.toLowerCase())) { toast('Categoria ja existe'); return; }
+  cats.push({ icon, name, subs: subs.length ? subs : ['Geral'] });
+  if (iconEl) iconEl.value = '';
+  if (nameEl) nameEl.value = '';
+  if (subsEl) subsEl.value = '';
   save();
   renderCategoryEditors();
   updateCatSelects();
+  renderFin();
+  renderBudget();
   toast('Categoria adicionada');
 }
 function removeCategory(type, name) {
+  const used = S.transactions.some(t => t.type === type && t.cat === name) || S.budgets.some(b => b.type === type && b.cat === name);
+  if (used && !confirm(`A categoria "${name}" tem registos/orcamentos. Remover mesmo assim?`)) return;
   S.categories[type] = S.categories[type].filter(c => c.name !== name);
   save();
   renderCategoryEditors();
   updateCatSelects();
+  renderFin();
+  renderBudget();
   toast('Categoria removida');
 }
-function renderCategoryEditors() {
+
+function addFinanceSubcategory(type, area = 'fin') {
+  const short = financeShort(type);
+  const select = document.getElementById(`${area}-${short}-sub-add-cat`);
+  const input = document.getElementById(`new-${area}-${short}-sub`);
+  const catName = select?.value;
+  const name = input?.value.trim();
+  const cat = getCategories(type).find(c => c.name === catName);
+  if (!cat) { toast('Escolha uma categoria', 'var(--red)'); return; }
+  if (!name) { highlight(`new-${area}-${short}-sub`); return; }
+  cat.subs = Array.isArray(cat.subs) ? cat.subs : ['Geral'];
+  if (cat.subs.some(s => s.toLowerCase() === name.toLowerCase())) {
+    toast('Sub-categoria ja existe', 'var(--gold)');
+    return;
+  }
+  cat.subs.push(name);
+  if (input) input.value = '';
+  save();
+  renderCategoryEditors();
+  updateCatSelects(catName, name);
+  renderFin();
+  renderBudget();
+  toast('Sub-categoria adicionada', 'var(--blue)');
+}
+
+function removeFinanceSubcategory(type, catName, sub) {
+  const cat = getCategories(type).find(c => c.name === catName);
+  if (!cat) return;
+  cat.subs = Array.isArray(cat.subs) ? cat.subs : ['Geral'];
+  if (cat.subs.length <= 1 && sub === 'Geral') {
+    toast('Mantem pelo menos uma sub-categoria', 'var(--red)');
+    return;
+  }
+  const used = S.transactions.some(t => t.type === type && t.cat === catName && (t.subCat || 'Geral') === sub);
+  if (used && !confirm(`A sub-categoria "${sub}" tem transacoes. Os registos passam para "Geral". Continuar?`)) return;
+  cat.subs = cat.subs.filter(s => s !== sub);
+  if (!cat.subs.length) cat.subs.push('Geral');
+  if (used && !cat.subs.includes('Geral')) cat.subs.unshift('Geral');
+  if (used) {
+    S.transactions.forEach(t => {
+      if (t.type === type && t.cat === catName && (t.subCat || 'Geral') === sub) t.subCat = 'Geral';
+    });
+  }
+  save();
+  renderCategoryEditors();
+  updateCatSelects(catName);
+  renderFin();
+  renderBudget();
+  toast('Sub-categoria removida');
+}
+
+function renderFinanceSubcategorySelects() {
   ['expense','income'].forEach(type => {
-    const el = document.getElementById('cat-' + type + '-editor');
-    if (!el) return;
-    el.innerHTML = S.categories[type].map(c => `
-      <div class="cat-chip">
-        <span class="icon">${c.icon}</span>
-        <span>${esc(c.name)}</span>
-        <button class="remove" onclick="removeCategory('${type}','${jsStr(c.name)}')" title="Remover">×</button>
-      </div>
-    `).join('');
+    const short = financeShort(type);
+    const select = document.getElementById(`fin-${short}-sub-add-cat`);
+    if (!select) return;
+    const previous = select.value;
+    const cats = getCategories(type);
+    select.innerHTML = cats.map(c => `<option value="${esc(c.name)}">${esc(c.icon)} ${esc(c.name)}</option>`).join('');
+    if (previous && cats.some(c => c.name === previous)) select.value = previous;
+    if (!select.value && cats[0]) select.value = cats[0].name;
   });
 }
-function updateCatSelects() {
+
+function renderCategoryEditors() {
+  ['expense','income'].forEach(type => {
+    const html = getCategories(type).map(c => `
+      <div class="finance-cat-panel">
+        <div class="finance-cat-panel-head">
+          <div class="finance-cat-title">
+            <span class="icon">${esc(c.icon)}</span>
+            <span>${esc(c.name)}</span>
+          </div>
+          <span class="time-cat-count">${(c.subs || ['Geral']).length} sub</span>
+          <button class="remove btn btn-danger btn-sm" onclick="removeCategory('${type}','${jsStr(c.name)}')" title="Remover">×</button>
+        </div>
+        <div class="time-sub-chip-list">
+          ${(c.subs || ['Geral']).map(s => `<span class="finance-sub-chip">${esc(s)}<button class="sub-chip-remove" onclick="removeFinanceSubcategory('${type}','${jsStr(c.name)}','${jsStr(s)}')" title="Remover sub-categoria">×</button></span>`).join('')}
+        </div>
+      </div>
+    `).join('');
+    [`cat-${type}-editor`, `fin-cat-${type}-editor`].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    });
+  });
+  renderFinanceSubcategorySelects();
+}
+function updateCatSelects(selectedCat = '', selectedSub = '') {
   const finCat = document.getElementById('fin-cat');
   const budCat = document.getElementById('bud-cat');
   const type = S.finType;
   if (finCat) {
+    const previous = selectedCat || finCat.value;
     finCat.innerHTML = getCategories(type).map(c => `<option value="${esc(c.name)}">${c.icon} ${esc(c.name)}</option>`).join('');
+    if (previous && getCategories(type).some(c => c.name === previous)) finCat.value = previous;
+    if (!finCat.value && getCategories(type)[0]) finCat.value = getCategories(type)[0].name;
+    renderFinSubcats(selectedSub);
   }
   if (budCat) {
     budCat.innerHTML = [...getCategories('expense'), ...getCategories('income')]
       .map(c => `<option value="${esc(c.name)}">${c.icon} ${esc(c.name)}</option>`).join('');
   }
+}
+function renderFinSubcats(selected = '') {
+  const catSelect = document.getElementById('fin-cat');
+  const subSelect = document.getElementById('fin-sub-cat');
+  if (!catSelect || !subSelect) return;
+  const cat = getFinanceCat(S.finType, catSelect.value);
+  const subs = cat.subs?.length ? cat.subs : ['Geral'];
+  const previous = selected || subSelect.value;
+  subSelect.innerHTML = subs.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  if (previous && subs.includes(previous)) subSelect.value = previous;
+  if (!subSelect.value && subs[0]) subSelect.value = subs[0];
 }
 function showCatEditor(type) {
   showTab('orcamento', document.querySelector(".tab-btn[onclick*='orcamento']") || document.querySelectorAll('.tab-btn')[0]);
@@ -599,18 +780,20 @@ function setFinType(t) {
   document.getElementById('fin-btn-exp').className = 'type-btn' + (t==='expense' ? ' exp' : '');
   document.getElementById('fin-btn-inc').className = 'type-btn' + (t==='income' ? ' inc' : '');
   updateCatSelects();
+  renderCategoryEditors();
 }
 
 function addTransaction() {
   const desc = document.getElementById('fin-desc').value.trim();
   const amount = num('fin-amount');
   const cat = document.getElementById('fin-cat').value;
+  const subCat = document.getElementById('fin-sub-cat')?.value || 'Geral';
   const date = document.getElementById('fin-date').value;
   const note = document.getElementById('fin-note').value.trim();
   if (!desc) { highlight('fin-desc'); return; }
   if (!amount || amount <= 0) { highlight('fin-amount'); return; }
   if (!date) { highlight('fin-date'); return; }
-  const payload = { id: UI.editing.transaction || uid(), type: S.finType, desc, amount, cat, date, note };
+  const payload = { id: UI.editing.transaction || uid(), type: S.finType, desc, amount, cat, subCat, date, note };
   const idx = S.transactions.findIndex(t => t.id === UI.editing.transaction);
   if (idx >= 0) S.transactions[idx] = payload;
   else S.transactions.push(payload);
@@ -631,6 +814,7 @@ function editTransaction(id) {
   document.getElementById('fin-desc').value = t.desc || '';
   document.getElementById('fin-amount').value = t.amount || '';
   document.getElementById('fin-cat').value = t.cat || '';
+  renderFinSubcats(t.subCat || 'Geral');
   document.getElementById('fin-date').value = t.date || today();
   document.getElementById('fin-note').value = t.note || '';
   setEditMode('transaction', true);
@@ -657,7 +841,7 @@ function renderFin() {
     if (period === 'week') { const now = new Date(); const start = new Date(now); start.setDate(now.getDate() - now.getDay()); return d >= start; }
     if (period === 'quarter') { const qStart = new Date(y, Math.floor(m/3)*3, 1); const qEnd = new Date(y, Math.floor(m/3)*3 + 3, 0); return d >= qStart && d <= qEnd; }
     return d.getMonth() === m && d.getFullYear() === y;
-  }).filter(t => !q || t.desc.toLowerCase().includes(q) || t.cat.toLowerCase().includes(q));
+  }).filter(t => !q || t.desc.toLowerCase().includes(q) || t.cat.toLowerCase().includes(q) || (t.subCat || 'Geral').toLowerCase().includes(q));
 
   const income = filtered.filter(t => t.type === 'income').reduce((s,t) => s + t.amount, 0);
   const expense = filtered.filter(t => t.type === 'expense').reduce((s,t) => s + t.amount, 0);
@@ -707,7 +891,7 @@ function renderFin() {
       return `<div class="tx-row" style="grid-template-columns:34px 1fr auto auto">
         <div class="tx-icon ${t.type}" style="background:${t.type==='expense'?'var(--red-d)':'var(--teal-d)'}">${getCatIcon(t.type, t.cat)}</div>
         <div><div class="tx-desc">${esc(t.desc)}</div>
-        <div class="tx-meta"><span>${fmtDate(t.date)}</span><span class="tag">${esc(t.cat)}</span>${budTag}${t.note?`<span style="color:var(--text3);font-size:0.72rem">📝 ${esc(t.note.slice(0,30))}</span>`:''}</div></div>
+        <div class="tx-meta"><span>${fmtDate(t.date)}</span><span class="tag">${esc(t.cat)} · ${esc(t.subCat || 'Geral')}</span>${budTag}${t.note?`<span style="color:var(--text3);font-size:0.72rem">📝 ${esc(t.note.slice(0,30))}</span>`:''}</div></div>
         <div class="mono ${t.type==='expense'?'c-red':'c-teal'}">${t.type==='expense'?'−':'+'}${fmt(t.amount)}</div>
         <div class="row-actions">
           <button class="btn btn-ghost btn-sm" onclick="editTransaction('${t.id}')" title="Editar">✎</button>
@@ -735,6 +919,25 @@ function renderFin() {
         <div class="bar-label">${getCatIcon('expense',r.cat)} ${esc(r.cat)}</div>
         <div class="bar-track"><div class="bar-fill" style="width:${pctVal}%;background:${color}"></div></div>
         <div class="bar-val">${fmt(r.spent)}${r.bud?` / ${fmt(r.bud)}`:''}</div>
+      </div>`;
+    }).join('') : '<div style="color:var(--text3);font-size:0.82rem;padding:8px 0">Sem dados</div>';
+  }
+
+  const subBars = document.getElementById('fin-subcat-bars');
+  if (subBars) {
+    const subTotals = {};
+    filtered.filter(t => t.type === 'expense').forEach(t => {
+      const key = `${t.cat}|${t.subCat || 'Geral'}`;
+      subTotals[key] = (subTotals[key] || 0) + t.amount;
+    });
+    const rows = Object.entries(subTotals).sort((a,b) => b[1] - a[1]);
+    const maxVal = Math.max(...rows.map(([,v]) => v), 0.01);
+    subBars.innerHTML = rows.length ? rows.map(([key, val], i) => {
+      const [cat, sub] = key.split('|');
+      return `<div class="bar-row">
+        <div class="bar-label">${getCatIcon('expense', cat)} ${esc(sub)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(val / maxVal * 100).toFixed(1)}%;background:${CAT_COLORS[i % CAT_COLORS.length]}"></div></div>
+        <div class="bar-val">${fmt(val)}</div>
       </div>`;
     }).join('') : '<div style="color:var(--text3);font-size:0.82rem;padding:8px 0">Sem dados</div>';
   }
@@ -849,6 +1052,32 @@ function addTimeSubcategory() {
   toast('Sub-categoria adicionada', 'var(--blue)');
 }
 
+function removeTimeSubcategory(catId, sub) {
+  const cat = getTimeCategories().find(c => c.id === catId);
+  if (!cat) return;
+  cat.subs = Array.isArray(cat.subs) ? cat.subs : ['Geral'];
+  if (cat.subs.length <= 1 && sub === 'Geral') {
+    toast('Mantem pelo menos uma sub-categoria', 'var(--red)');
+    return;
+  }
+  const used = S.timeEntries.some(e => e.mainCat === catId && (e.subCat || 'Geral') === sub);
+  if (used && !confirm(`A sub-categoria "${sub}" tem registos. Os registos passam para "Geral". Continuar?`)) return;
+  cat.subs = cat.subs.filter(s => s !== sub);
+  if (!cat.subs.length) cat.subs.push('Geral');
+  if (used && !cat.subs.includes('Geral')) cat.subs.unshift('Geral');
+  if (used) {
+    S.timeEntries.forEach(e => {
+      if (e.mainCat === catId && (e.subCat || 'Geral') === sub) e.subCat = 'Geral';
+    });
+  }
+  save();
+  renderTimeSubcategorySelect(catId);
+  renderTimeSubcats();
+  renderTimeCategoryEditor();
+  renderTime();
+  toast('Sub-categoria removida');
+}
+
 function removeTimeCategory(id) {
   const cat = getTimeCat(id);
   const isUsed = S.timeEntries.some(e => e.mainCat === id);
@@ -877,7 +1106,7 @@ function renderTimeCategoryEditor() {
         <button class="remove btn btn-danger btn-sm" onclick="removeTimeCategory('${jsStr(c.id)}')" title="Remover">×</button>
       </div>
       <div class="time-sub-chip-list">
-        ${(c.subs || ['Geral']).map(s => `<span class="time-sub-chip">${esc(s)}</span>`).join('')}
+        ${(c.subs || ['Geral']).map(s => `<span class="time-sub-chip">${esc(s)}<button class="sub-chip-remove" onclick="removeTimeSubcategory('${jsStr(c.id)}','${jsStr(s)}')" title="Remover sub-categoria">×</button></span>`).join('')}
       </div>
     </div>
   `).join('');
@@ -2937,6 +3166,7 @@ Object.assign(window, {
   addCategory,
   addCredit,
   addEmergencyMove,
+  addFinanceSubcategory,
   addInvestment,
   addPatrimonyCategory,
   addPatrimonyItem,
@@ -2978,10 +3208,14 @@ Object.assign(window, {
   importBackup,
   lockApp,
   removeCategory,
+  removeFinanceSubcategory,
   removePatrimonyCategory,
   removeTimeCategory,
+  removeTimeSubcategory,
   renderDashboard,
   renderFin,
+  renderFinSubcats,
+  renderFinanceSubcategorySelects,
   renderEmergency,
   renderPatrimony,
   renderPatrimonyCategorySelects,
