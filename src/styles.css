@@ -117,6 +117,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* ── MAIN LAYOUTS ── */
 .two-col{display:grid;grid-template-columns:360px 1fr;gap:24px;align-items:start}
 .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;align-items:start}
+#page-financeiro>.two-col{grid-template-columns:minmax(420px,520px) 1fr}
 
 /* ── TABLE / LIST ── */
 .tx-wrap{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
@@ -232,7 +233,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .finance-cat-section{border-top:1px solid var(--border);padding-top:16px;margin-top:16px;display:grid;gap:12px}
 .finance-cat-section:first-of-type{border-top:none;padding-top:0;margin-top:0}
 .finance-subcat-admin{border:1px solid var(--border);background:var(--s2);border-radius:var(--r-sm);padding:14px;margin-top:4px}
-.finance-cat-editor{display:grid;grid-template-columns:1fr;gap:10px}
+.finance-cat-editor{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:8px}
 .time-subcat-admin{border:1px solid var(--border);background:var(--s2);border-radius:var(--r-sm);padding:14px;margin-top:4px}
 #cat-time-editor{display:grid;grid-template-columns:1fr;gap:10px}
 .time-cat-panel,.finance-cat-panel{border:1px solid var(--border);background:var(--s2);border-radius:var(--r-sm);padding:12px}
@@ -245,6 +246,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .time-sub-chip,.finance-sub-chip{border:1px solid var(--border);background:var(--s1);border-radius:999px;color:var(--text2);font-size:0.72rem;padding:4px 8px 4px 9px;display:inline-flex;align-items:center;gap:6px}
 .sub-chip-remove{background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.82rem;line-height:1;padding:0;transition:color 0.18s}
 .sub-chip-remove:hover{color:var(--red)}
+.finance-cat-panel{padding:9px;min-width:0}
+.finance-cat-panel-head{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:5px;align-items:center;margin-bottom:7px}
+.finance-cat-title{gap:6px;font-size:0.8rem}
+.finance-cat-title .icon{font-size:0.95rem}
+.finance-cat-panel .time-cat-count{font-size:0.58rem}
+.finance-cat-panel .btn-sm{padding:3px 6px;font-size:0.66rem}
+.finance-cat-panel .time-sub-chip-list{gap:4px}
+.finance-sub-chip{font-size:0.66rem;padding:3px 6px 3px 7px;max-width:100%}
 .time-category-dashboard{display:grid;gap:12px}
 .time-dash-group{border:1px solid var(--border);background:var(--s2);border-radius:var(--r-sm);padding:14px}
 .time-dash-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
@@ -298,6 +307,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   .dash-mini-grid{grid-template-columns:1fr 1fr}
   .dash-signals{grid-template-columns:1fr}
   .two-col{grid-template-columns:1fr}
+  #page-financeiro>.two-col{grid-template-columns:1fr}
   .three-col{grid-template-columns:1fr}
   .reserve-card-stats{grid-template-columns:1fr 1fr}
   .credit-timeline-summary{grid-template-columns:1fr}
