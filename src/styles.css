@@ -133,6 +133,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .tag.budget-ok{background:var(--teal-d);color:var(--teal)}
 .tag.budget-warn{background:rgba(212,168,67,0.12);color:var(--gold)}
 .tag.budget-over{background:var(--red-d);color:var(--red)}
+.tag.credit-link{background:var(--blue-d);color:var(--blue)}
 .mono{font-family:var(--font-mono);font-size:1.02rem;font-weight:600}
 .c-red{color:var(--red)}.c-teal{color:var(--teal)}.c-gold{color:var(--gold)}.c-blue{color:var(--blue)}.c-purple{color:var(--purple)}
 
@@ -294,6 +295,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .cred-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--teal),var(--blue));transition:width 0.5s ease}
 .cred-end-date{font-size:0.82rem;color:var(--text2);font-family:var(--font-mono);text-align:right}
 .cred-end-date span{color:var(--gold)}
+.cred-linked-note{font-size:0.78rem;color:var(--blue);font-family:var(--font-mono);border-top:1px solid var(--border);padding-top:8px;margin-top:4px}
 
 /* ── SCROLLBAR ── */
 ::-webkit-scrollbar{width:5px}

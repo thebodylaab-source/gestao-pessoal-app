@@ -265,7 +265,8 @@ function normalizeTransactions(input) {
   return Array.isArray(input) ? input.map(t => ({
     ...t,
     cat: cleanFinanceCategoryName(t?.cat || ''),
-    subCat: t?.subCat || t?.subcat || 'Geral'
+    subCat: t?.subCat || t?.subcat || 'Geral',
+    creditId: t?.type === 'expense' ? (t?.creditId || '') : ''
   })) : [];
 }
 
@@ -530,6 +531,7 @@ function setEditMode(kind, active) {
 function clearTransactionForm() {
   ['fin-desc','fin-amount','fin-note'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('fin-date').value = today();
+  renderCreditLinkSelect();
 }
 
 function clearTimeForm() {
@@ -768,6 +770,22 @@ function renderFinSubcats(selected = '') {
   if (previous && subs.includes(previous)) subSelect.value = previous;
   if (!subSelect.value && subs[0]) subSelect.value = subs[0];
 }
+function getCredit(id) {
+  return S.credits.find(c => c.id === id) || null;
+}
+function creditLabel(c) {
+  return c ? `${CRED_ICONS[c.type] || '🏦'} ${c.name}` : '';
+}
+function renderCreditLinkSelect(selected = '') {
+  const select = document.getElementById('fin-credit');
+  if (!select) return;
+  const canLink = S.finType === 'expense' && S.credits.length > 0;
+  const previous = selected || select.value;
+  select.innerHTML = `<option value="">Sem ligação a crédito</option>` + S.credits.map(c => `<option value="${esc(c.id)}">${esc(creditLabel(c))}</option>`).join('');
+  select.disabled = !canLink;
+  if (canLink && previous && S.credits.some(c => c.id === previous)) select.value = previous;
+  else select.value = '';
+}
 function showCatEditor(type) {
   showTab('orcamento', document.querySelector(".tab-btn[onclick*='orcamento']") || document.querySelectorAll('.tab-btn')[0]);
 }
@@ -780,6 +798,7 @@ function setFinType(t) {
   document.getElementById('fin-btn-exp').className = 'type-btn' + (t==='expense' ? ' exp' : '');
   document.getElementById('fin-btn-inc').className = 'type-btn' + (t==='income' ? ' inc' : '');
   updateCatSelects();
+  renderCreditLinkSelect();
   renderCategoryEditors();
 }
 
@@ -788,16 +807,17 @@ function addTransaction() {
   const amount = num('fin-amount');
   const cat = document.getElementById('fin-cat').value;
   const subCat = document.getElementById('fin-sub-cat')?.value || 'Geral';
+  const creditId = S.finType === 'expense' ? (document.getElementById('fin-credit')?.value || '') : '';
   const date = document.getElementById('fin-date').value;
   const note = document.getElementById('fin-note').value.trim();
   if (!desc) { highlight('fin-desc'); return; }
   if (!amount || amount <= 0) { highlight('fin-amount'); return; }
   if (!date) { highlight('fin-date'); return; }
-  const payload = { id: UI.editing.transaction || uid(), type: S.finType, desc, amount, cat, subCat, date, note };
+  const payload = { id: UI.editing.transaction || uid(), type: S.finType, desc, amount, cat, subCat, creditId, date, note };
   const idx = S.transactions.findIndex(t => t.id === UI.editing.transaction);
   if (idx >= 0) S.transactions[idx] = payload;
   else S.transactions.push(payload);
-  save(); renderFin(); renderBudget();
+  save(); renderFin(); renderBudget(); renderCredits(); renderDashboard();
   const wasEditing = Boolean(UI.editing.transaction);
   UI.editing.transaction = null;
   setEditMode('transaction', false);
@@ -815,6 +835,7 @@ function editTransaction(id) {
   document.getElementById('fin-amount').value = t.amount || '';
   document.getElementById('fin-cat').value = t.cat || '';
   renderFinSubcats(t.subCat || 'Geral');
+  renderCreditLinkSelect(t.creditId || '');
   document.getElementById('fin-date').value = t.date || today();
   document.getElementById('fin-note').value = t.note || '';
   setEditMode('transaction', true);
@@ -824,12 +845,13 @@ function editTransaction(id) {
 function deleteTransaction(id) {
   if (!confirm('Eliminar esta transação?')) return;
   S.transactions = S.transactions.filter(t => t.id !== id);
-  save(); renderFin(); renderBudget(); toast('Eliminado');
+  save(); renderFin(); renderBudget(); renderCredits(); renderDashboard(); toast('Eliminado');
 }
 
 function renderFin() {
   updateMonthLabels();
   updateCatSelects();
+  renderCreditLinkSelect();
   const m = S.months.fin.getMonth(), y = S.months.fin.getFullYear();
   const q = (document.getElementById('fin-search')?.value || '').toLowerCase();
   const period = S.periods.fin;
@@ -888,10 +910,12 @@ function renderFin() {
     list.innerHTML = sorted2.map(t => {
       const bud = S.budgets.find(b => b.cat === t.cat);
       const budTag = bud ? `<span class="tag budget-ok">orç: ${fmt(bud.limit)}</span>` : '';
+      const linkedCredit = getCredit(t.creditId);
+      const creditTag = linkedCredit ? `<span class="tag credit-link">crédito: ${esc(linkedCredit.name)}</span>` : '';
       return `<div class="tx-row" style="grid-template-columns:34px 1fr auto auto">
         <div class="tx-icon ${t.type}" style="background:${t.type==='expense'?'var(--red-d)':'var(--teal-d)'}">${getCatIcon(t.type, t.cat)}</div>
         <div><div class="tx-desc">${esc(t.desc)}</div>
-        <div class="tx-meta"><span>${fmtDate(t.date)}</span><span class="tag">${esc(t.cat)} · ${esc(t.subCat || 'Geral')}</span>${budTag}${t.note?`<span style="color:var(--text3);font-size:0.72rem">📝 ${esc(t.note.slice(0,30))}</span>`:''}</div></div>
+        <div class="tx-meta"><span>${fmtDate(t.date)}</span><span class="tag">${esc(t.cat)} · ${esc(t.subCat || 'Geral')}</span>${creditTag}${budTag}${t.note?`<span style="color:var(--text3);font-size:0.72rem">📝 ${esc(t.note.slice(0,30))}</span>`:''}</div></div>
         <div class="mono ${t.type==='expense'?'c-red':'c-teal'}">${t.type==='expense'?'−':'+'}${fmt(t.amount)}</div>
         <div class="row-actions">
           <button class="btn btn-ghost btn-sm" onclick="editTransaction('${t.id}')" title="Editar">✎</button>
@@ -1631,7 +1655,7 @@ function wealthSnapshot() {
   const pat = patrimonyTotals();
   const investments = S.investments.reduce((s,i) => s + i.qty * i.currPrice, 0);
   const reserves = getEmergencyReserves().reduce((s,r) => s + r.currentAmount, 0);
-  const creditDebt = S.credits.reduce((s,c) => s + Math.max((c.total || 0) - (c.paid || 0), 0), 0);
+  const creditDebt = S.credits.reduce((s,c) => s + creditOutstanding(c), 0);
   const assets = pat.assets + investments + reserves;
   const liabilities = pat.liabilities + creditDebt;
   return { assets, liabilities, net: assets - liabilities, investments, reserves, patrimonyAssets: pat.assets, patrimonyLiabilities: pat.liabilities, creditDebt };
@@ -2260,6 +2284,20 @@ function highlight(id) {
 const CRED_ICONS = { 'Habitação':'🏠','Automóvel':'🚗','Pessoal':'👤','Educação':'📚','Negócio':'💼','Outro':'📦' };
 const CRED_COLORS = ['#5b8dee','#3dbf9b','#d4a843','#9b72d4','#e05c5c','#c8a96e'];
 
+function creditLinkedPaid(c) {
+  return S.transactions
+    .filter(t => t.type === 'expense' && t.creditId === c.id)
+    .reduce((sum,t) => sum + (Number(t.amount) || 0), 0);
+}
+
+function creditPaid(c) {
+  return Math.min(Number(c.total) || 0, (Number(c.paid) || 0) + creditLinkedPaid(c));
+}
+
+function creditOutstanding(c) {
+  return Math.max((Number(c.total) || 0) - creditPaid(c), 0);
+}
+
 function addCredit() {
   const name     = document.getElementById('cred-name').value.trim();
   const type     = document.getElementById('cred-type').value;
@@ -2279,7 +2317,7 @@ function addCredit() {
   const idx = S.credits.findIndex(c => c.id === UI.editing.credit);
   if (idx >= 0) S.credits[idx] = payload;
   else S.credits.push(payload);
-  save(); renderCredits();
+  save(); renderCredits(); renderFin(); renderDashboard();
   const wasEditing = Boolean(UI.editing.credit);
   UI.editing.credit = null;
   setEditMode('credit', false);
@@ -2305,15 +2343,20 @@ function editCredit(id) {
 }
 
 function deleteCredit(id) {
-  if (!confirm('Eliminar este crédito?')) return;
+  const linked = S.transactions.filter(t => t.creditId === id).length;
+  const msg = linked
+    ? `Eliminar este crédito? ${linked} transação(ões) financeira(s) vão ficar sem ligação ao crédito.`
+    : 'Eliminar este crédito?';
+  if (!confirm(msg)) return;
   S.credits = S.credits.filter(c => c.id !== id);
-  save(); renderCredits(); toast('Crédito eliminado');
+  S.transactions.forEach(t => { if (t.creditId === id) t.creditId = ''; });
+  save(); renderCredits(); renderFin(); renderDashboard(); toast('Crédito eliminado');
 }
 
 function renderCredits() {
   // KPIs
-  const totalDebt    = S.credits.reduce((s,c) => s + (c.total - c.paid), 0);
-  const totalPaid    = S.credits.reduce((s,c) => s + c.paid, 0);
+  const totalDebt    = S.credits.reduce((s,c) => s + creditOutstanding(c), 0);
+  const totalPaid    = S.credits.reduce((s,c) => s + creditPaid(c), 0);
   const totalMonthly = S.credits.reduce((s,c) => s + c.monthly, 0);
   document.getElementById('cred-kpi-total').textContent   = fmt(totalDebt);
   document.getElementById('cred-kpi-paid').textContent    = fmt(totalPaid);
@@ -2330,8 +2373,10 @@ function renderCredits() {
     return;
   }
   container.innerHTML = S.credits.map((c, idx) => {
-    const outstanding = Math.max(c.total - c.paid, 0);
-    const pctPaid = c.total > 0 ? Math.min((c.paid / c.total) * 100, 100) : 0;
+    const linkedPaid = creditLinkedPaid(c);
+    const paid = creditPaid(c);
+    const outstanding = creditOutstanding(c);
+    const pctPaid = c.total > 0 ? Math.min((paid / c.total) * 100, 100) : 0;
     const endDate = creditEndDate(c);
     const endStr  = endDate ? endDate.toLocaleDateString('pt-PT', { month:'long', year:'numeric' }) : '—';
     const yearsLeft = creditYearsLeft(c);
@@ -2349,7 +2394,7 @@ function renderCredits() {
       </div>
       <div class="cred-card-body">
         <div class="cred-stat"><label>Valor Total</label><div class="v">${fmt(c.total)}</div></div>
-        <div class="cred-stat"><label>Total Pago</label><div class="v" style="color:var(--teal)">${fmt(c.paid)}</div></div>
+        <div class="cred-stat"><label>Total Pago</label><div class="v" style="color:var(--teal)">${fmt(paid)}</div></div>
         <div class="cred-stat"><label>Em Dívida</label><div class="v" style="color:var(--red)">${fmt(outstanding)}</div></div>
         <div class="cred-stat"><label>Prestação</label><div class="v" style="color:var(--gold)">${fmt(c.monthly)}/mês</div></div>
         <div class="cred-stat"><label>Prestações Falta</label><div class="v">${remainingInstallments(c)}</div></div>
@@ -2361,6 +2406,7 @@ function renderCredits() {
           <div class="cred-bar-track"><div class="cred-bar-fill" style="width:${pctPaid.toFixed(1)}%;background:linear-gradient(90deg,${color}88,${color})"></div></div>
         </div>
         <div class="cred-end-date">Liquidação prevista: <span>${endStr}</span></div>
+        ${linkedPaid ? `<div class="cred-linked-note">Inclui ${fmt(linkedPaid)} vindo de despesas financeiras ligadas.</div>` : ''}
         ${c.note ? `<div style="font-size:0.8rem;color:var(--text2);border-top:1px solid var(--border);padding-top:8px;margin-top:4px">📝 ${esc(c.note)}</div>` : ''}
       </div>
     </div>`;
@@ -2375,7 +2421,12 @@ function creditEndDate(c) {
 }
 
 function remainingInstallments(c) {
-  return Math.max(0, parseInt(c?.remaining, 10) || 0);
+  if (creditOutstanding(c) <= 0) return 0;
+  const base = Math.max(0, parseInt(c?.remaining, 10) || 0);
+  const monthly = Number(c?.monthly) || 0;
+  if (!monthly) return base;
+  const linkedInstallments = Math.floor(creditLinkedPaid(c) / monthly);
+  return Math.max(0, base - linkedInstallments);
 }
 
 function creditYearsLeft(c) {
@@ -2411,7 +2462,7 @@ function drawCreditTimeline() {
   const totalMs = end - start;
 
   if (summary) {
-    const totalDebt = S.credits.reduce((s,c) => s + Math.max((c.total || 0) - (c.paid || 0), 0), 0);
+    const totalDebt = S.credits.reduce((s,c) => s + creditOutstanding(c), 0);
     const totalMonthly = S.credits.reduce((s,c) => s + (c.monthly || 0), 0);
     const soonest = credits.map(creditEndDate).filter(Boolean)[0];
     summary.innerHTML = `
@@ -2488,9 +2539,10 @@ function drawCreditTimeline() {
     const ex = clamp(xForDate(endD), pad.l, pad.l + trackW);
     const barW = Math.max(ex - sx, 8);
     const y2 = laneStartY + idx * laneGap;
-    const pctPaid = c.total > 0 ? Math.min(c.paid / c.total, 1) : 0;
+    const paid = creditPaid(c);
+    const pctPaid = c.total > 0 ? Math.min(paid / c.total, 1) : 0;
     const paidW = barW * pctPaid;
-    const outstanding = Math.max((c.total || 0) - (c.paid || 0), 0);
+    const outstanding = creditOutstanding(c);
 
     ctx.fillStyle = idx % 2 === 0 ? '#f8fafc' : '#ffffff';
     roundRect(ctx, pad.l - 12, y2 - 9, trackW + 24, laneH + 18, 10);
