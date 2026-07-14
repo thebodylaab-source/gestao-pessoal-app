@@ -270,6 +270,26 @@ function normalizeTransactions(input) {
   })) : [];
 }
 
+function normalizeTimeEntries(input) {
+  return Array.isArray(input) ? input.map((e, index) => {
+    const entryDate = e?.date || today();
+    const fallbackTime = Date.parse(`${entryDate}T00:00:00`);
+    const createdAt = e?.createdAt || e?.created_at || (Number.isNaN(fallbackTime) ? '' : new Date(fallbackTime + index).toISOString());
+    return {
+      ...e,
+      id: e?.id || `time-${index + 1}`,
+      mainCat: e?.mainCat || e?.cat || 'geral',
+      subCat: e?.subCat || e?.subcat || 'Geral',
+      desc: e?.desc || '',
+      date: entryDate,
+      hours: Number(e?.hours) || 0,
+      note: e?.note || '',
+      createdAt,
+      updatedAt: e?.updatedAt || e?.updated_at || createdAt
+    };
+  }).filter(e => e.hours > 0) : [];
+}
+
 function normalizeEmergencyReserve(reserve, index = 0) {
   const fallbackId = index === 0 ? 'principal' : `reserva-${index + 1}`;
   return {
@@ -356,6 +376,7 @@ function normalizeState() {
   S.categories.income = normalizeFinanceCategories(S.categories.income, defaultCategories.income);
   S.categories.time = normalizeTimeCategories(S.categories.time);
   S.transactions = normalizeTransactions(S.transactions);
+  S.timeEntries = normalizeTimeEntries(S.timeEntries);
   S.budgets = Array.isArray(S.budgets) ? S.budgets.map(b => ({ ...b, cat: cleanFinanceCategoryName(b.cat || '') })) : [];
 }
 
@@ -1145,8 +1166,10 @@ function addTimeEntry() {
   const note = document.getElementById('time-note').value.trim();
   if (!date) { highlight('time-date'); return; }
   if (!hours || hours <= 0) { highlight('time-hours'); return; }
-  const payload = { id: UI.editing.time || uid(), mainCat, subCat, desc, date, hours, note };
   const idx = S.timeEntries.findIndex(e => e.id === UI.editing.time);
+  const existing = idx >= 0 ? S.timeEntries[idx] : null;
+  const now = new Date().toISOString();
+  const payload = { id: existing?.id || uid(), mainCat, subCat, desc, date, hours, note, createdAt: existing?.createdAt || now, updatedAt: now };
   if (idx >= 0) S.timeEntries[idx] = payload;
   else S.timeEntries.push(payload);
   save(); renderTime();
@@ -1282,7 +1305,15 @@ function renderTime() {
 
   // List
   const list = document.getElementById('time-list');
-  const sorted = [...entries].sort((a,b) => b.date.localeCompare(a.date));
+  const sorted = entries.map((entry, index) => ({ entry, index })).sort((a,b) => {
+    const dateCmp = String(b.entry.date || '').localeCompare(String(a.entry.date || ''));
+    if (dateCmp) return dateCmp;
+    const aCreated = Date.parse(a.entry.createdAt || '');
+    const bCreated = Date.parse(b.entry.createdAt || '');
+    const aOrder = Number.isNaN(aCreated) ? a.index : aCreated;
+    const bOrder = Number.isNaN(bCreated) ? b.index : bCreated;
+    return bOrder - aOrder;
+  }).map(({ entry }) => entry);
   list.innerHTML = sorted.length ? sorted.map(e => {
     const info = getTimeCat(e.mainCat);
     return `<div class="tx-row" style="grid-template-columns:34px 1fr auto auto">
