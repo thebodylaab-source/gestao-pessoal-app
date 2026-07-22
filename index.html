@@ -35,39 +35,42 @@
 <!-- NAV -->
 <nav class="nav">
   <div class="nav-logo">Gestão <span>Pessoal</span></div>
-  <button class="tab-btn" onclick="showTab('dashboard',this)">📊 Dashboard</button>
-  <button class="tab-btn active" onclick="showTab('financeiro',this)">💰 Financeiro</button>
-  <button class="tab-btn" onclick="showTab('tempo',this)">⏱ Tempo</button>
-  <button class="tab-btn" onclick="showTab('investimentos',this)">📈 Investimentos</button>
-  <button class="tab-btn" onclick="showTab('patrimonio',this)">💎 Património</button>
-  <button class="tab-btn" onclick="showTab('orcamento',this)">🎯 Orçamento</button>
-  <button class="tab-btn" onclick="showTab('reserva',this)">🛟 Reserva</button>
-  <button class="tab-btn" onclick="showTab('creditos',this)">🏦 Créditos</button>
-  <div style="flex:1"></div>
-  <div id="cloud-status" style="display:flex;align-items:center;gap:10px;padding:0 8px">
-    <div id="cloud-indicator" style="display:flex;align-items:center;gap:7px;font-size:0.72rem;color:var(--text2);white-space:nowrap">
-      <span id="cloud-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text3);display:inline-block;flex-shrink:0"></span>
-      <span id="cloud-label">Cloud</span>
-    </div>
-    <button id="cloud-btn" class="btn btn-ghost btn-sm" onclick="cloudAuth()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Ligar</button>
-    <button id="cloud-save-btn" class="btn btn-ghost btn-sm" onclick="cloudSave()" style="font-size:0.7rem;padding:5px 12px;display:none;white-space:nowrap">Guardar</button>
-    <button id="cloud-load-btn" class="btn btn-ghost btn-sm" onclick="cloudLoad()" style="font-size:0.7rem;padding:5px 12px;display:none;white-space:nowrap">Carregar</button>
-    <button id="cloud-logout-btn" class="btn btn-ghost btn-sm" onclick="cloudLogout()" style="font-size:0.7rem;padding:5px 12px;display:none;white-space:nowrap">Sair</button>
+  <div class="nav-tabs">
+    <button class="tab-btn" onclick="showTab('dashboard',this)">📊 Dashboard</button>
+    <button class="tab-btn active" onclick="showTab('financeiro',this)">💰 Financeiro</button>
+    <button class="tab-btn" onclick="showTab('tempo',this)">⏱ Tempo</button>
+    <button class="tab-btn" onclick="showTab('investimentos',this)">📈 Investimentos</button>
+    <button class="tab-btn" onclick="showTab('patrimonio',this)">💎 Património</button>
+    <button class="tab-btn" onclick="showTab('orcamento',this)">🎯 Orçamento</button>
+    <button class="tab-btn" onclick="showTab('reserva',this)">🛟 Reserva</button>
+    <button class="tab-btn" onclick="showTab('creditos',this)">🏦 Créditos</button>
   </div>
-  <div id="drive-status" style="display:flex;align-items:center;gap:10px;padding:0 8px">
-    <div id="drive-indicator" style="display:flex;align-items:center;gap:7px;font-size:0.72rem;color:var(--text2);white-space:nowrap">
-      <span id="drive-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text3);display:inline-block;flex-shrink:0"></span>
-      <span id="drive-label">Google Drive</span>
+  <div class="nav-actions">
+    <div id="cloud-status" class="nav-status">
+      <div id="cloud-indicator" class="nav-indicator">
+        <span id="cloud-dot" class="nav-dot"></span>
+        <span id="cloud-label">Cloud</span>
+      </div>
+      <button id="cloud-btn" class="btn btn-ghost btn-sm" onclick="cloudAuth()">Ligar</button>
+      <button id="cloud-save-btn" class="btn btn-ghost btn-sm" onclick="cloudSave()" style="display:none">Guardar</button>
+      <button id="cloud-load-btn" class="btn btn-ghost btn-sm" onclick="cloudLoad()" style="display:none">Carregar</button>
+      <button id="cloud-logout-btn" class="btn btn-ghost btn-sm" onclick="cloudLogout()" style="display:none">Sair</button>
     </div>
-    <button id="drive-btn" class="btn btn-ghost btn-sm" onclick="driveAuth()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Ligar</button>
-    <button id="drive-save-btn" class="btn btn-ghost btn-sm" onclick="driveSave()" style="font-size:0.7rem;padding:5px 12px;display:none;white-space:nowrap">💾 Guardar</button>
-    <button id="drive-load-btn" class="btn btn-ghost btn-sm" onclick="driveLoad()" style="font-size:0.7rem;padding:5px 12px;display:none;white-space:nowrap">☁ Carregar</button>
-    <button class="btn btn-ghost btn-sm" onclick="exportBackup()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Exportar</button>
-    <button class="btn btn-ghost btn-sm" onclick="exportCsv()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">CSV</button>
-    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('import-file').click()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Importar</button>
-    <button class="btn btn-ghost btn-sm" onclick="changePassword()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Password</button>
-    <button class="btn btn-ghost btn-sm" onclick="lockApp()" style="font-size:0.7rem;padding:5px 12px;white-space:nowrap">Bloquear</button>
-    <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="importBackup(this.files[0])">
+    <div id="drive-status" class="nav-status">
+      <div id="drive-indicator" class="nav-indicator">
+        <span id="drive-dot" class="nav-dot"></span>
+        <span id="drive-label">Google Drive</span>
+      </div>
+      <button id="drive-btn" class="btn btn-ghost btn-sm" onclick="driveAuth()">Ligar</button>
+      <button id="drive-save-btn" class="btn btn-ghost btn-sm" onclick="driveSave()" style="display:none">💾 Guardar</button>
+      <button id="drive-load-btn" class="btn btn-ghost btn-sm" onclick="driveLoad()" style="display:none">☁ Carregar</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportBackup()">Exportar</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportCsv()">CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('import-file').click()">Importar</button>
+      <button class="btn btn-ghost btn-sm" onclick="changePassword()">Password</button>
+      <button class="btn btn-ghost btn-sm" onclick="lockApp()">Bloquear</button>
+      <input type="file" id="import-file" accept="application/json,.json" style="display:none" onchange="importBackup(this.files[0])">
+    </div>
   </div>
 </nav>
 

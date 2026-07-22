@@ -33,10 +33,17 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);font-we
 body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 40% at 50% 0%,rgba(47,104,216,0.06) 0%,transparent 70%);pointer-events:none;z-index:0}
 
 /* ── NAV ── */
-.nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0;padding:0 32px;overflow-x:auto}
-.nav-logo{font-family:var(--font-serif);font-size:1.05rem;color:var(--gold);padding:18px 24px 18px 0;border-right:1px solid var(--border);margin-right:24px;white-space:nowrap;letter-spacing:0.02em}
+.nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.94);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:0 18px;padding:0 24px;overflow:visible}
+.nav-logo{font-family:var(--font-serif);font-size:1.05rem;color:var(--gold);padding:18px 20px 18px 0;border-right:1px solid var(--border);white-space:nowrap;letter-spacing:0.02em}
 .nav-logo span{font-style:italic}
-.tab-btn{padding:18px 20px;font-family:var(--font-sans);font-size:0.84rem;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--text2);background:none;border:none;cursor:pointer;position:relative;transition:color 0.2s;white-space:nowrap}
+.nav-tabs{display:flex;align-items:center;min-width:0;overflow-x:auto;scrollbar-width:thin}
+.nav-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;overflow-x:auto;scrollbar-width:thin}
+.nav-tabs::-webkit-scrollbar,.nav-actions::-webkit-scrollbar{height:4px}
+.nav-status{display:flex;align-items:center;gap:8px;padding:0 4px;white-space:nowrap;flex:0 0 auto}
+.nav-indicator{display:flex;align-items:center;gap:7px;font-size:0.72rem;color:var(--text2);white-space:nowrap}
+.nav-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);display:inline-block;flex-shrink:0}
+.nav-actions .btn-sm{font-size:0.7rem;padding:5px 10px;white-space:nowrap}
+.tab-btn{padding:18px 14px;font-family:var(--font-sans);font-size:0.8rem;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--text2);background:none;border:none;cursor:pointer;position:relative;transition:color 0.2s;white-space:nowrap;flex:0 0 auto}
 .tab-btn::after{content:'';position:absolute;bottom:0;left:50%;right:50%;height:2px;background:var(--gold);transition:left 0.25s,right 0.25s;border-radius:2px 2px 0 0}
 .tab-btn.active{color:var(--text)}
 .tab-btn.active::after{left:0;right:0}
@@ -303,6 +310,13 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 
 /* ── RESPONSIVE ── */
+@media(max-width:1500px){
+  .nav{grid-template-columns:auto minmax(0,1fr);gap:0 14px;padding:0 16px 8px}
+  .nav-logo{grid-column:1;grid-row:1;border-right:none;padding:14px 0 10px}
+  .nav-actions{grid-column:2;grid-row:1;justify-self:end;max-width:100%;padding-top:4px}
+  .nav-tabs{grid-column:1/-1;grid-row:2;width:100%;border-top:1px solid var(--border)}
+  .tab-btn{padding:12px 12px;font-size:0.74rem}
+}
 @media(max-width:900px){
   .kpi-strip{grid-template-columns:1fr 1fr!important}
   .dashboard-hero{grid-template-columns:1fr}
@@ -313,12 +327,21 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   .three-col{grid-template-columns:1fr}
   .reserve-card-stats{grid-template-columns:1fr 1fr}
   .credit-timeline-summary{grid-template-columns:1fr}
-  .nav{padding:0 16px;overflow-x:auto}
+  .tab-btn{padding:11px 9px;font-size:0.7rem;letter-spacing:0.05em}
   .page{padding:20px 16px 60px}
   .budget-row,.inv-row{grid-template-columns:1fr;gap:10px}
   .budget-row .row-actions,.inv-row .row-actions{justify-content:flex-start}
 }
 @media(max-width:600px){
+  .nav{grid-template-columns:1fr;padding:0 12px 8px;gap:6px}
+  .nav-logo{grid-column:1;grid-row:1;justify-self:start;font-size:1rem;padding:12px 0 4px}
+  .nav-tabs{grid-column:1;grid-row:2;border-top:none}
+  .nav-actions{grid-column:1;grid-row:3;width:100%;justify-content:flex-start;padding-bottom:4px}
+  .nav-status{gap:6px;padding:0}
+  .nav-indicator{gap:0}
+  #cloud-label,#drive-label{display:none}
+  .nav-actions .btn-sm{font-size:0.66rem;padding:5px 8px}
+  .tab-btn{padding:10px 9px;font-size:0.68rem;letter-spacing:0.05em}
   .kpi-strip{grid-template-columns:1fr!important}
   .dash-mini-grid{grid-template-columns:1fr}
   .form-row,.form-row-3{grid-template-columns:1fr}
