@@ -3,30 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#e9edf4">
+  <meta name="theme-color" content="#09090b">
   <meta name="description" content="App privada para gerir finanças, tempo, investimentos, orçamento e créditos.">
   <title>Gestão Pessoal</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="src/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="src/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://apis.google.com/js/api.js" defer></script>
   <script src="https://accounts.google.com/gsi/client" defer></script>
   <script type="module" src="src/app.js"></script>
 </head>
 <body>
 <!-- ── LOCK SCREEN ── -->
-<div id="lockscreen" style="position:fixed;inset:0;background:#e9edf4;z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0">
-  <div style="text-align:center;padding:48px 40px;background:#ffffff;border:1px solid #d9deea;border-radius:16px;width:90%;max-width:380px;box-shadow:0 24px 70px rgba(24,32,51,0.12)">
-    <div style="font-family:Georgia,serif;font-size:2rem;color:#d4a843;margin-bottom:6px">Gestão <em>Pessoal</em></div>
-    <div style="font-size:0.75rem;color:#667085;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:36px">Acesso privado</div>
+<div id="lockscreen" style="position:fixed;inset:0;background:#09090b;z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;font-family:Inter,sans-serif">
+  <div style="text-align:center;padding:48px 40px;background:linear-gradient(160deg,rgba(39,39,42,.7),rgba(24,24,27,.9));border:1px solid #27272a;border-radius:20px;width:90%;max-width:380px;box-shadow:0 24px 70px rgba(0,0,0,.5)">
+    <div style="font-family:Inter,sans-serif;font-weight:800;font-size:2rem;color:#fff;margin-bottom:6px">Gestão <em style="color:#10b981;font-style:italic">Pessoal</em></div>
+    <div style="font-size:0.75rem;color:#a1a1aa;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:36px">Acesso privado</div>
     <input type="password" id="lock-input" placeholder="Password"
-      style="width:100%;background:#f3f5f9;border:1px solid #d9deea;border-radius:8px;color:#182033;font-size:1rem;padding:14px 16px;outline:none;text-align:center;letter-spacing:0.2em;margin-bottom:12px"
+      style="width:100%;background:#27272a;border:1px solid #3f3f46;border-radius:12px;color:#fff;font-size:1rem;padding:14px 16px;outline:none;text-align:center;letter-spacing:0.2em;margin-bottom:12px"
       onkeydown="if(event.key==='Enter') checkPassword()">
     <button onclick="checkPassword()"
-      style="width:100%;padding:13px;background:#b98718;border:none;border-radius:8px;color:#ffffff;font-size:0.85rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer">
+      style="width:100%;padding:13px;background:#10b981;border:none;border-radius:12px;color:#052e1f;font-size:0.85rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer">
       Entrar
     </button>
-    <div id="lock-error" style="color:#e05c5c;font-size:0.78rem;margin-top:12px;opacity:0;transition:opacity 0.3s">Password incorreta</div>
+    <div id="lock-error" style="color:#f87171;font-size:0.78rem;margin-top:12px;opacity:0;transition:opacity 0.3s">Password incorreta</div>
   </div>
 </div>
 
@@ -827,83 +831,151 @@
 <!-- TAB 6: CRÉDITOS -->
 <!-- ═══════════════════════════════════════════════════ -->
 <div class="page" id="page-creditos">
-  <div style="margin-bottom:8px">
-    <h1 class="sec-title">Gestão de <span>Créditos</span></h1>
-    <p class="sec-sub">Empréstimos · Prestações · Linha Temporal</p>
+  <div style="margin-bottom:20px">
+    <h1 class="sec-title">Carteira de <span>Créditos</span></h1>
+    <p class="sec-sub">Efeito Dominó · Simulador Price · Partilha</p>
   </div>
 
   <!-- KPIs -->
   <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr)">
-    <div class="kpi-card" style="--accent:var(--red);--accent-bg:var(--red-d)">
-      <label>Dívida Total</label>
-      <div class="val" id="cred-kpi-total">0,00 €</div>
-      <div class="sub">valor em dívida</div>
-    </div>
-    <div class="kpi-card" style="--accent:var(--teal);--accent-bg:var(--teal-d)">
-      <label>Total Pago</label>
-      <div class="val" id="cred-kpi-paid">0,00 €</div>
-      <div class="sub">capital amortizado</div>
-    </div>
-    <div class="kpi-card" style="--accent:var(--gold);--accent-bg:var(--gold-d)">
-      <label>Prestação Mensal</label>
+    <div class="kpi-card" style="--accent:var(--brand);--accent-bg:rgba(16,185,129,.18)">
+      <div class="cred-kpi-icon">💶</div>
       <div class="val" id="cred-kpi-monthly">0,00 €</div>
-      <div class="sub">total de encargos</div>
+      <label>Encargo Mensal Total</label>
+      <div class="sub" id="cred-kpi-monthly-sub">prestações ativas</div>
     </div>
     <div class="kpi-card" style="--accent:var(--blue);--accent-bg:var(--blue-d)">
-      <label>Créditos Ativos</label>
-      <div class="val" id="cred-kpi-count">0</div>
-      <div class="sub">em vigor</div>
+      <div class="cred-kpi-icon" style="--accent-bg:var(--blue-d)">🏦</div>
+      <div class="val" id="cred-kpi-debt">0,00 €</div>
+      <label>Dívida Consolidada</label>
+      <div class="sub" id="cred-kpi-debt-sub">capital em dívida total</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--brand);--accent-bg:rgba(16,185,129,.18)">
+      <div class="cred-kpi-icon">📈</div>
+      <div class="val" id="cred-kpi-saved">0,00 €</div>
+      <label>Juros Poupados</label>
+      <div class="sub" id="cred-kpi-saved-sub">com a estratégia de abates</div>
+    </div>
+    <div class="kpi-card" style="--accent:var(--purple);--accent-bg:var(--purple-d)">
+      <div class="cred-kpi-icon" style="--accent-bg:var(--purple-d)">🏁</div>
+      <div class="val" id="cred-kpi-free" style="font-size:1.5rem">—</div>
+      <label>Libertação Total</label>
+      <div class="sub">último crédito a zeros</div>
     </div>
   </div>
 
-  <!-- TIMELINE -->
-  <div class="card credit-timeline-card" style="margin-bottom:24px">
-    <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Linha Temporal — Próximos 10 Anos</div>
-    <div class="credit-timeline-summary" id="cred-timeline-summary"></div>
-    <div id="cred-timeline" style="overflow-x:auto;padding-bottom:8px">
-      <canvas id="chart-timeline" height="360"></canvas>
+  <!-- DOMINO CHART -->
+  <div class="card" style="margin-bottom:24px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <div>
+        <div class="card-title" style="margin-bottom:4px"><span class="dot"></span>Projeção do Encargo Mensal</div>
+        <div style="font-size:.8rem;color:var(--text2)">Cada degrau é um crédito que morre — o seu orçamento liberta-se ao longo do tempo.</div>
+      </div>
+      <div class="domino-legend">
+        <span><i class="dl-dot" style="background:var(--brand)"></i>Com estratégia atual</span>
+        <span><i class="dl-dot" style="background:#71717a"></i>Sem bónus anuais</span>
+      </div>
+    </div>
+    <div style="position:relative;height:300px"><canvas id="cred-domino-chart"></canvas></div>
+  </div>
+
+  <!-- CARDS + SIMULATOR -->
+  <div class="cred-main-grid" style="display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start;margin-bottom:24px">
+    <div>
+      <div class="card-title" style="margin-bottom:14px"><span class="dot"></span>Os Meus Créditos</div>
+      <div id="cred-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:16px">
+        <div class="empty"><div class="e-icon">◎</div>Nenhum crédito registado</div>
+      </div>
+    </div>
+    <div>
+      <div class="card-title" style="margin-bottom:14px"><span class="dot"></span>Simulador de Abates</div>
+      <div class="card" style="position:sticky;top:20px;padding:20px">
+        <label class="mini-label">Crédito alvo</label>
+        <div class="field" style="margin-bottom:14px"><select id="sim-credit" onchange="runCredSim()"></select></div>
+
+        <div class="sim-tabs" style="margin-bottom:14px">
+          <button class="sim-tab active" id="sim-tab-once" onclick="setCredSimTab('once')">Abate Único</button>
+          <button class="sim-tab" id="sim-tab-rec" onclick="setCredSimTab('rec')">Bónus Anual</button>
+        </div>
+
+        <label class="mini-label" id="sim-amount-label">Montante a amortizar (€)</label>
+        <div class="field" style="margin-bottom:14px"><input type="number" id="sim-amount" min="0" step="100" value="5000" oninput="runCredSim()"></div>
+
+        <div id="sim-mode-wrap" style="margin-bottom:14px">
+          <label class="mini-label">Objetivo</label>
+          <div class="sim-seg">
+            <button class="sim-seg-btn active" id="sim-mode-term" onclick="setCredSimMode('term')">Reduzir Prazo</button>
+            <button class="sim-seg-btn" id="sim-mode-pay" onclick="setCredSimMode('pay')">Reduzir Prestação</button>
+          </div>
+        </div>
+
+        <div id="sim-result" style="display:grid;gap:9px;margin-bottom:14px"></div>
+
+        <button class="btn btn-primary btn-full" id="sim-apply" onclick="applyCredSim()">Aplicar Amortização</button>
+        <p id="sim-hint" style="font-size:11px;color:var(--text3);text-align:center;margin-top:8px"></p>
+      </div>
     </div>
   </div>
 
-  <div class="two-col">
-    <!-- FORM -->
-    <div class="card">
-      <div class="card-title"><span class="dot" style="background:var(--red)"></span>Registar Crédito</div>
-      <div class="form-grid">
-        <div class="field">
-          <label>Tipo de Crédito</label>
-          <select id="cred-type">
-            <option value="Habitação">🏠 Habitação</option>
-            <option value="Automóvel">🚗 Automóvel</option>
-            <option value="Pessoal">👤 Pessoal</option>
-            <option value="Educação">📚 Educação</option>
-            <option value="Negócio">💼 Negócio</option>
-            <option value="Outro">📦 Outro</option>
-          </select>
+  <!-- FORM -->
+  <div class="card" style="margin-bottom:24px">
+    <div class="card-title"><span class="dot" style="background:var(--brand)"></span>Registar / Editar Crédito</div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:14px">
+      <div class="field">
+        <label>Tipo de Crédito</label>
+        <select id="cred-type">
+          <option value="Habitação">🏠 Habitação</option>
+          <option value="Automóvel">🚗 Automóvel</option>
+          <option value="Pessoal">👤 Pessoal</option>
+          <option value="Educação">📚 Educação</option>
+          <option value="Negócio">💼 Negócio</option>
+          <option value="Outro">📦 Outro</option>
+        </select>
+      </div>
+      <div class="field"><label>Descrição / Nome</label><input type="text" id="cred-name" placeholder="ex: Crédito Habitação BPI"></div>
+      <div class="field"><label>Valor Total do Crédito (€)</label><input type="number" id="cred-total" placeholder="150000" min="1" step="0.01"></div>
+      <div class="field"><label>Valor Já Pago (€)</label><input type="number" id="cred-paid" placeholder="20000" min="0" step="0.01"></div>
+      <div class="field"><label>Prestação Mensal (€)</label><input type="number" id="cred-monthly" placeholder="650" min="1" step="0.01" oninput="updateCredShareHint()"></div>
+      <div class="field"><label>Nº Prestações em Falta</label><input type="number" id="cred-remaining" placeholder="240" min="1" step="1"></div>
+      <div class="field"><label>Data de Início</label><input type="date" id="cred-start"></div>
+      <div class="field"><label>Taxa de Juro TAN (% anual)</label><input type="number" id="cred-rate" placeholder="3.5" min="0" step="0.01"></div>
+      <div class="field" style="grid-column:1/-1"><label>Notas</label><textarea id="cred-note" placeholder="Banco, condições especiais…" style="min-height:50px"></textarea></div>
+
+      <div style="grid-column:1/-1;border:1px solid var(--border2);border-radius:12px;padding:14px;background:rgba(255,255,255,.02)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:600;color:#fff;font-size:.9rem">🤝 Partilhar crédito com alguém</span>
+          <div class="toggle-switch" id="cred-split-toggle" onclick="toggleCredSplit()"></div>
         </div>
-        <div class="field"><label>Descrição / Nome</label><input type="text" id="cred-name" placeholder="ex: Crédito Habitação BPI"></div>
-        <div class="form-row">
-          <div class="field"><label>Valor Total do Crédito (€)</label><input type="number" id="cred-total" placeholder="150000" min="1" step="0.01"></div>
-          <div class="field"><label>Valor Já Pago (€)</label><input type="number" id="cred-paid" placeholder="20000" min="0" step="0.01"></div>
+        <div id="cred-split-fields" style="display:none;margin-top:14px;gap:14px;grid-template-columns:1fr 1fr">
+          <div class="field"><label>Dividido com (nome)</label><input type="text" id="cred-partner" placeholder="ex: João"></div>
+          <div class="field">
+            <label style="display:flex;justify-content:space-between">A minha quota <span id="cred-share-val" style="color:var(--brand)">50%</span></label>
+            <input type="range" id="cred-share" min="5" max="100" step="5" value="50" oninput="updateCredShareHint()" style="width:100%;margin-top:8px">
+            <div style="font-size:12px;color:var(--text3);margin-top:6px">A minha prestação: <span id="cred-share-hint" style="color:var(--brand);font-family:var(--font-mono)">—</span></div>
+          </div>
         </div>
-        <div class="form-row">
-          <div class="field"><label>Prestação Mensal (€)</label><input type="number" id="cred-monthly" placeholder="650" min="1" step="0.01"></div>
-          <div class="field"><label>Nº Prestações em Falta</label><input type="number" id="cred-remaining" placeholder="240" min="1" step="1"></div>
-        </div>
-        <div class="form-row">
-          <div class="field"><label>Data de Início</label><input type="date" id="cred-start"></div>
-          <div class="field"><label>Taxa de Juro (% anual)</label><input type="number" id="cred-rate" placeholder="3.5" min="0" step="0.01"></div>
-        </div>
-        <div class="field"><label>Notas</label><textarea id="cred-note" placeholder="Banco, condições especiais…" style="min-height:50px"></textarea></div>
+      </div>
+
+      <div style="grid-column:1/-1;display:flex;gap:10px">
         <button class="btn btn-primary btn-full" id="cred-submit" onclick="addCredit()">+ Registar Crédito</button>
         <button class="btn btn-ghost btn-full" id="cred-cancel-edit" onclick="cancelEdit('credit')" style="display:none">Cancelar edição</button>
       </div>
     </div>
+  </div>
 
-    <!-- CREDIT CARDS -->
-    <div style="display:flex;flex-direction:column;gap:16px" id="cred-cards">
-      <div class="empty"><div class="e-icon">◎</div>Nenhum crédito registado</div>
+  <!-- HISTORY -->
+  <div class="card">
+    <div class="card-title"><span class="dot"></span>Histórico de Operações</div>
+    <div style="overflow-x:auto">
+      <table class="cred-history-table">
+        <thead><tr>
+          <th>Data</th><th>Crédito</th><th>Operação</th>
+          <th style="text-align:right">Capital Abatido</th><th style="text-align:right">Comissão</th><th style="text-align:right">Juros Poupados</th>
+        </tr></thead>
+        <tbody id="cred-history"></tbody>
+      </table>
     </div>
+    <div id="cred-history-empty" class="empty" style="padding:28px">Ainda não realizou nenhuma amortização. Use o simulador acima. ↑</div>
   </div>
 </div>
 

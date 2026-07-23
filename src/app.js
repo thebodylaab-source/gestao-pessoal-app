@@ -368,6 +368,13 @@ function normalizePatrimony(input) {
 }
 
 function normalizeState() {
+  if (!Array.isArray(S.creditLog)) S.creditLog = [];
+  S.credits = (Array.isArray(S.credits) ? S.credits : []).map(c => ({
+    ...c,
+    share: (c.share == null ? 100 : Math.min(100, Math.max(1, Number(c.share) || 100))),
+    partner: c.partner || '',
+    recurring: Number(c.recurring) || 0
+  }));
   S.emergency = normalizeEmergencyState(S.emergency);
   S.patrimony = normalizePatrimony(S.patrimony);
   const defaultCategories = createDefaultCategories();
@@ -394,6 +401,7 @@ function resetState(data = {}) {
   S.investments = Array.isArray(data.investments) ? data.investments : [];
   S.budgets = Array.isArray(data.budgets) ? data.budgets : [];
   S.credits = Array.isArray(data.credits) ? data.credits : [];
+  S.creditLog = Array.isArray(data.creditLog) ? data.creditLog : [];
   S.emergency = data.emergency && typeof data.emergency === 'object' ? data.emergency : createEmergencyState();
   S.patrimony = data.patrimony && typeof data.patrimony === 'object' ? data.patrimony : { items: [], categories: createDefaultPatrimonyCategories() };
   S.categories = data.categories && typeof data.categories === 'object' ? data.categories : createDefaultCategories();
@@ -433,7 +441,7 @@ function switchLocalUser(userId = null, options = {}) {
 }
 
 function stateSnapshot() {
-  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, emergency: S.emergency, patrimony: S.patrimony };
+  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, creditLog: S.creditLog, emergency: S.emergency, patrimony: S.patrimony };
   return d;
 }
 
@@ -566,8 +574,12 @@ function clearInvestmentForm() {
 }
 
 function clearCreditForm() {
-  ['cred-name','cred-total','cred-paid','cred-monthly','cred-remaining','cred-rate','cred-note'].forEach(id => document.getElementById(id).value = '');
+  ['cred-name','cred-total','cred-paid','cred-monthly','cred-remaining','cred-rate','cred-note','cred-partner'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('cred-start').value = today();
+  const share = document.getElementById('cred-share'); if (share) share.value = 50;
+  const tgl = document.getElementById('cred-split-toggle'); if (tgl) tgl.classList.remove('on');
+  const sf = document.getElementById('cred-split-fields'); if (sf) sf.style.display = 'none';
+  updateCredShareHint();
 }
 
 function clearEmergencyForm() {
@@ -2344,7 +2356,12 @@ function addCredit() {
   if (!monthly||monthly<=0){ highlight('cred-monthly'); return; }
   if (!remaining||remaining<=0){ highlight('cred-remaining'); return; }
   if (!start)    { highlight('cred-start');   return; }
-  const payload = { id: UI.editing.credit || uid(), name, type, total, paid, monthly, remaining, start, rate, note };
+  const splitOn = document.getElementById('cred-split-toggle').classList.contains('on');
+  const share = splitOn ? Math.min(100, Math.max(1, parseInt(document.getElementById('cred-share').value, 10) || 100)) : 100;
+  const partner = splitOn ? document.getElementById('cred-partner').value.trim() : '';
+  const existing = S.credits.find(c => c.id === UI.editing.credit);
+  const recurring = existing ? (Number(existing.recurring) || 0) : 0;
+  const payload = { id: UI.editing.credit || uid(), name, type, total, paid, monthly, remaining, start, rate, note, share, partner, recurring };
   const idx = S.credits.findIndex(c => c.id === UI.editing.credit);
   if (idx >= 0) S.credits[idx] = payload;
   else S.credits.push(payload);
@@ -2369,6 +2386,12 @@ function editCredit(id) {
   document.getElementById('cred-start').value = c.start || today();
   document.getElementById('cred-rate').value = c.rate || '';
   document.getElementById('cred-note').value = c.note || '';
+  const splitOn = (c.share == null ? 100 : c.share) < 100;
+  document.getElementById('cred-split-toggle').classList.toggle('on', splitOn);
+  document.getElementById('cred-split-fields').style.display = splitOn ? 'grid' : 'none';
+  document.getElementById('cred-partner').value = c.partner || '';
+  document.getElementById('cred-share').value = splitOn ? c.share : 50;
+  updateCredShareHint();
   setEditMode('credit', true);
   document.getElementById('cred-type').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -2384,64 +2407,377 @@ function deleteCredit(id) {
   save(); renderCredits(); renderFin(); renderDashboard(); toast('Crédito eliminado');
 }
 
-function renderCredits() {
-  // KPIs
-  const totalDebt    = S.credits.reduce((s,c) => s + creditOutstanding(c), 0);
-  const totalPaid    = S.credits.reduce((s,c) => s + creditPaid(c), 0);
-  const totalMonthly = S.credits.reduce((s,c) => s + c.monthly, 0);
-  document.getElementById('cred-kpi-total').textContent   = fmt(totalDebt);
-  document.getElementById('cred-kpi-paid').textContent    = fmt(totalPaid);
-  document.getElementById('cred-kpi-monthly').textContent = fmt(totalMonthly);
-  document.getElementById('cred-kpi-count').textContent   = S.credits.length;
+/* ═══════════ MOTOR FINANCEIRO DE CRÉDITOS (Sistema Francês / Price) ═══════════ */
+const CRED_COMMISSION = 0.005; // 0,5% comissão legal de amortização
+const CRED_TYPE_ACCENT = {
+  'Habitação':'rgba(56,189,248,.18)','Automóvel':'rgba(224,182,77,.18)','Pessoal':'rgba(167,139,250,.18)',
+  'Educação':'rgba(16,185,129,.18)','Negócio':'rgba(94,234,212,.18)','Outro':'rgba(161,161,170,.18)'
+};
+const CRED_MONTHS_FULL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const CRED_MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const credR2 = n => Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100;
+const fmt0 = n => (Number(n) || 0).toLocaleString('pt-PT', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' €';
+const credShareOf = c => (c.share == null ? 100 : Math.min(100, Math.max(0, Number(c.share) || 0)));
+const credRate = c => (Number(c.rate) || 0) / 1200;
 
-  // Timeline canvas
-  drawCreditTimeline();
+function credRemMonths(C, i, P) {
+  if (C <= 0) return 0;
+  if (P <= 0) return Infinity;
+  if (i <= 0) return Math.ceil(C / P);
+  if (P <= C * i) return Infinity;
+  return Math.max(0, Math.round(-Math.log(1 - (C * i) / P) / Math.log(1 + i)));
+}
+function credPaymentFor(C, i, n) {
+  if (n <= 0) return 0;
+  if (i <= 0) return C / n;
+  return (C * i) / (1 - Math.pow(1 + i, -n));
+}
+// Referência = mês atual (offset 0)
+function credRef() { const d = new Date(); return d.getFullYear() * 12 + d.getMonth(); }
+function credLabel(off) {
+  const t = credRef() + off, y = Math.floor(t / 12), m = t % 12;
+  return { full: `${CRED_MONTHS_FULL[m]} ${y}`, short: `${CRED_MONTHS_SHORT[m]} ${String(y).slice(2)}` };
+}
 
-  // Cards
-  const container = document.getElementById('cred-cards');
-  if (!S.credits.length) {
-    container.innerHTML = `<div class="empty"><div class="e-icon">◎</div>Nenhum crédito registado</div>`;
-    return;
+// Projeção mês-a-mês de toda a carteira (encargo = a minha parte)
+function simulateCredits(credits, applyRecurring) {
+  const st = credits.map(c => ({
+    id: c.id, bal: creditOutstanding(c), i: credRate(c), P: Number(c.monthly) || 0,
+    sh: credShareOf(c) / 100,
+    rec: (applyRecurring && Number(c.recurring) > 0) ? Number(c.recurring) : 0,
+    endOffset: null
+  })).filter(s => s.bal > 0.005 && s.P > 0);
+  const series = [];
+  let totalInterest = 0;
+  for (let m = 0; m < 720; m++) {
+    if (applyRecurring && m > 0 && m % 12 === 0) {
+      for (const s of st) if (s.bal > 0.005 && s.rec > 0) { s.bal = Math.max(0, s.bal - s.rec); if (s.bal <= 0.005 && s.endOffset === null) s.endOffset = m - 1; }
+    }
+    let monthTotal = 0, active = false;
+    for (const s of st) {
+      if (s.bal <= 0.005) continue;
+      active = true;
+      const interest = s.bal * s.i;
+      totalInterest += interest;
+      const principal = s.P - interest;
+      if (principal >= s.bal) { monthTotal += (s.bal + interest) * s.sh; s.bal = 0; s.endOffset = m; }
+      else { s.bal -= principal; monthTotal += s.P * s.sh; }
+    }
+    series.push(credR2(monthTotal));
+    if (!active) break;
   }
-  container.innerHTML = S.credits.map((c, idx) => {
-    const linkedPaid = creditLinkedPaid(c);
-    const paid = creditPaid(c);
-    const outstanding = creditOutstanding(c);
-    const pctPaid = c.total > 0 ? Math.min((paid / c.total) * 100, 100) : 0;
-    const endDate = creditEndDate(c);
-    const endStr  = endDate ? endDate.toLocaleDateString('pt-PT', { month:'long', year:'numeric' }) : '—';
-    const yearsLeft = creditYearsLeft(c);
-    const color = CRED_COLORS[idx % CRED_COLORS.length];
-    return `<div class="cred-card" style="border-top:3px solid ${color}">
-      <div class="cred-card-header">
-        <div>
-          <div class="cred-card-title">${CRED_ICONS[c.type]||'📦'} ${esc(c.name)}</div>
-          <div class="cred-card-type">${esc(c.type)}${c.rate ? ' · ' + c.rate + '% a.a.' : ''}</div>
+  st.forEach(s => { if (s.endOffset === null && s.bal <= 0.005) s.endOffset = 0; });
+  const payoffOffset = st.length ? Math.max(0, ...st.map(s => s.endOffset === null ? 0 : s.endOffset)) : 0;
+  return { series, totalInterest: credR2(totalInterest), payoffOffset, endByCredit: Object.fromEntries(st.map(s => [s.id, s.endOffset])) };
+}
+
+function credSavedTotal() {
+  const manual = (S.creditLog || []).reduce((a, h) => a + (Number(h.saved) || 0), 0);
+  const withRec = simulateCredits(S.credits, true);
+  const noRec = simulateCredits(S.credits, false);
+  return { manual, recurring: Math.max(0, noRec.totalInterest - withRec.totalInterest), sim: withRec };
+}
+
+let credDominoChart = null;
+const credSim = { tab: 'once', mode: 'term' };
+
+function renderCredits() {
+  const credits = S.credits;
+  const active = credits.filter(c => creditOutstanding(c) > 0.005);
+  const anySplit = credits.some(c => credShareOf(c) < 100);
+  const monthly = active.reduce((a, c) => a + (Number(c.monthly) || 0) * credShareOf(c) / 100, 0);
+  const debt = credits.reduce((a, c) => a + creditOutstanding(c) * credShareOf(c) / 100, 0);
+  const saved = credSavedTotal();
+  const totalSaved = saved.manual + saved.recurring;
+
+  document.getElementById('cred-kpi-monthly').textContent = fmt(monthly);
+  document.getElementById('cred-kpi-monthly-sub').textContent = anySplit ? 'a minha parte das prestações' : `${active.length} créditos ativos`;
+  document.getElementById('cred-kpi-debt').textContent = fmt(debt);
+  document.getElementById('cred-kpi-debt-sub').textContent = anySplit ? 'a minha parte da dívida' : 'capital em dívida total';
+  document.getElementById('cred-kpi-saved').textContent = fmt(totalSaved);
+  document.getElementById('cred-kpi-saved-sub').textContent = saved.recurring > 0 ? `inclui ${fmt0(saved.recurring)} de bónus anuais` : 'com a estratégia de abates';
+  document.getElementById('cred-kpi-free').textContent = active.length ? credLabel(saved.sim.payoffOffset + 1).full : '—';
+
+  drawCredDomino();
+
+  // Cartões
+  const container = document.getElementById('cred-cards');
+  if (!credits.length) {
+    container.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="e-icon">◎</div>Nenhum crédito registado</div>`;
+  } else {
+    const ends = saved.sim.endByCredit;
+    container.innerHTML = credits.map(c => {
+      const i = credRate(c);
+      const outstanding = creditOutstanding(c);
+      const paid = creditPaid(c);
+      const base = Number(c.total) || (paid + outstanding) || 1;
+      const pct = Math.min(100, Math.max(0, (paid / base) * 100));
+      const n = credRemMonths(outstanding, i, Number(c.monthly) || 0);
+      const sh = credShareOf(c), split = sh < 100, myPay = (Number(c.monthly) || 0) * sh / 100;
+      const done = outstanding <= 0.005;
+      const endOff = ends[c.id];
+      const endStr = done ? 'Liquidado' : (endOff != null ? credLabel(endOff + 1).full : (n === Infinity ? '—' : credLabel(n).full));
+      const accent = CRED_TYPE_ACCENT[c.type] || CRED_TYPE_ACCENT['Outro'];
+      return `<div class="cc">
+        <div class="cc-badges">
+          ${Number(c.recurring) > 0 ? `<span class="cc-badge rec">+${fmt0(c.recurring)}/ano</span>` : ''}
+          ${split ? `<span class="cc-badge split">🤝 ${sh}%</span>` : ''}
         </div>
-        <div class="row-actions">
-          <button class="btn btn-ghost btn-sm" onclick="editCredit('${c.id}')" title="Editar">✎</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteCredit('${c.id}')" title="Eliminar">×</button>
+        <div class="cc-head">
+          <div class="cc-ico" style="--accent-bg:${accent}">${CRED_ICONS[c.type] || '📦'}</div>
+          <div style="min-width:0">
+            <div class="cc-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</div>
+            <div class="cc-sub" style="color:var(--text2)">${esc(c.type)}${c.rate ? ' · TAN ' + Number(c.rate).toFixed(2).replace('.', ',') + '%' : ''}</div>
+            ${split ? `<div class="cc-sub" style="color:#5eead4">Dividido com ${esc(c.partner || 'outra pessoa')}</div>` : ''}
+          </div>
         </div>
-      </div>
-      <div class="cred-card-body">
-        <div class="cred-stat"><label>Valor Total</label><div class="v">${fmt(c.total)}</div></div>
-        <div class="cred-stat"><label>Total Pago</label><div class="v" style="color:var(--teal)">${fmt(paid)}</div></div>
-        <div class="cred-stat"><label>Em Dívida</label><div class="v" style="color:var(--red)">${fmt(outstanding)}</div></div>
-        <div class="cred-stat"><label>Prestação</label><div class="v" style="color:var(--gold)">${fmt(c.monthly)}/mês</div></div>
-        <div class="cred-stat"><label>Prestações Falta</label><div class="v">${remainingInstallments(c)}</div></div>
-        <div class="cred-stat"><label>Anos Restantes</label><div class="v" style="color:var(--blue)">${yearsLeft !== '—' ? yearsLeft + ' anos' : '—'}</div></div>
-      </div>
-      <div class="cred-card-footer">
-        <div>
-          <div class="cred-progress-label"><span>Progresso de amortização</span><span>${pctPaid.toFixed(1)}%</span></div>
-          <div class="cred-bar-track"><div class="cred-bar-fill" style="width:${pctPaid.toFixed(1)}%;background:linear-gradient(90deg,${color}88,${color})"></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px">
+          <span style="font-size:.72rem;color:var(--text3)">Capital em dívida</span>
+          <span style="font-size:1.1rem;font-weight:800;color:#fff;font-family:var(--font-mono)">${fmt(outstanding)}</span>
         </div>
-        <div class="cred-end-date">Liquidação prevista: <span>${endStr}</span></div>
-        ${linkedPaid ? `<div class="cred-linked-note">Inclui ${fmt(linkedPaid)} vindo de despesas financeiras ligadas.</div>` : ''}
-        ${c.note ? `<div style="font-size:0.8rem;color:var(--text2);border-top:1px solid var(--border);padding-top:8px;margin-top:4px">📝 ${esc(c.note)}</div>` : ''}
-      </div>
-    </div>`;
+        <div style="height:9px;border-radius:6px;background:var(--s3);overflow:hidden;margin-bottom:4px">
+          <div style="height:100%;border-radius:6px;background:linear-gradient(90deg,var(--brand),#34d399);width:${pct.toFixed(0)}%;transition:width .7s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:14px">
+          <span>${pct.toFixed(0)}% pago</span><span>de ${fmt0(base)}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+          <div class="cc-mini"><div class="v" style="${split ? 'color:#5eead4' : ''}">${fmt0(myPay)}</div><div class="l">${split ? 'presto (de ' + fmt0(c.monthly) + ')' : 'prestação'}</div></div>
+          <div class="cc-mini"><div class="v">${done ? '0' : (n === Infinity ? '∞' : n)}</div><div class="l">meses</div></div>
+          <div class="cc-mini"><div class="v" style="font-size:.72rem;${done ? 'color:var(--brand)' : ''}">${done ? '✓' : endStr}</div><div class="l">${done ? 'liquidado' : 'fim'}</div></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" style="flex:1" onclick="editCredit('${c.id}')">Editar</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCredit('${c.id}')">Remover</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  populateCredSimSelect();
+  runCredSim();
+  renderCredHistory();
+}
+
+function drawCredDomino() {
+  const canvas = document.getElementById('cred-domino-chart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const withRec = simulateCredits(S.credits, true);
+  const noRec = simulateCredits(S.credits, false);
+  const hasRec = S.credits.some(c => Number(c.recurring) > 0);
+  const maxOff = Math.max(withRec.series.length, noRec.series.length, 1);
+  const labels = [], dataW = [...withRec.series], dataN = [...noRec.series];
+  for (let m = 0; m < maxOff; m++) labels.push(credLabel(m).short);
+  while (dataW.length < maxOff) dataW.push(0);
+  while (dataN.length < maxOff) dataN.push(0);
+
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 300);
+  grad.addColorStop(0, 'rgba(16,185,129,.35)');
+  grad.addColorStop(1, 'rgba(16,185,129,.02)');
+  const datasets = [{ label: 'Encargo mensal (estratégia atual)', data: dataW, borderColor: '#10b981', backgroundColor: grad, fill: true, stepped: true, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5, tension: 0 }];
+  if (hasRec) datasets.push({ label: 'Sem bónus anuais', data: dataN, borderColor: '#71717a', backgroundColor: 'transparent', fill: false, stepped: true, borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0, tension: 0 });
+
+  if (credDominoChart) credDominoChart.destroy();
+  credDominoChart = new Chart(ctx, {
+    type: 'line', data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: '#18181b', borderColor: '#3f3f46', borderWidth: 1, padding: 12, titleColor: '#fff', bodyColor: '#d4d4d8', cornerRadius: 12,
+          callbacks: { title: items => credLabel(items[0].dataIndex).full, label: item => ' ' + item.dataset.label + ': ' + fmt(item.parsed.y) } }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(63,63,70,.25)', drawTicks: false }, border: { display: false },
+          ticks: { color: '#71717a', maxRotation: 0, autoSkip: false, callback: (v, idx) => { const t = credRef() + idx; return (t % 12 === 0 || idx === 0) ? credLabel(idx).short : ''; } } },
+        y: { grid: { color: 'rgba(63,63,70,.25)' }, border: { display: false }, beginAtZero: true, ticks: { color: '#71717a', callback: v => fmt0(v) } }
+      }
+    }
+  });
+}
+
+function renderCredHistory() {
+  const body = document.getElementById('cred-history');
+  const empty = document.getElementById('cred-history-empty');
+  const log = S.creditLog || [];
+  if (!log.length) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  body.innerHTML = log.slice().reverse().map(h => {
+    const pillCol = h.op.includes('Prazo') ? 'background:rgba(16,185,129,.15);color:var(--brand-l)' : h.op.includes('Bónus') ? 'background:rgba(167,139,250,.15);color:var(--purple)' : 'background:rgba(56,189,248,.15);color:var(--blue)';
+    return `<tr>
+      <td style="white-space:nowrap;color:var(--text2)">${esc(h.date)}</td>
+      <td style="color:#fff">${esc(h.credit)}</td>
+      <td><span class="pill" style="${pillCol}">${esc(h.op)}</span></td>
+      <td style="text-align:right;font-family:var(--font-mono)">${fmt(h.capital)}</td>
+      <td style="text-align:right;font-family:var(--font-mono);color:var(--gold)">${fmt(h.commission)}</td>
+      <td style="text-align:right;font-family:var(--font-mono);color:var(--brand-l)">${Number(h.saved) > 0 ? '+' + fmt(h.saved) : '—'}</td>
+    </tr>`;
   }).join('');
+}
+
+/* ═══════════ SIMULADOR DE ABATES ═══════════ */
+function populateCredSimSelect() {
+  const sel = document.getElementById('sim-credit');
+  if (!sel) return;
+  const active = S.credits.filter(c => creditOutstanding(c) > 0.005 && (Number(c.monthly) || 0) > 0);
+  const prev = sel.value;
+  sel.innerHTML = active.length
+    ? active.map(c => `<option value="${c.id}">${CRED_ICONS[c.type] || '📦'} ${esc(c.name)}</option>`).join('')
+    : '<option value="">— sem créditos ativos —</option>';
+  if (prev && active.some(c => c.id === prev)) sel.value = prev;
+}
+function setCredSimTab(t) {
+  credSim.tab = t;
+  document.getElementById('sim-tab-once').classList.toggle('active', t === 'once');
+  document.getElementById('sim-tab-rec').classList.toggle('active', t === 'rec');
+  document.getElementById('sim-amount-label').textContent = t === 'once' ? 'Montante a amortizar (€)' : 'Bónus anual recorrente (€ / 12 meses)';
+  document.getElementById('sim-mode-wrap').style.display = t === 'once' ? 'block' : 'none';
+  document.getElementById('sim-apply').textContent = t === 'once' ? 'Aplicar Amortização' : 'Ativar Bónus Anual';
+  runCredSim();
+}
+function setCredSimMode(m) {
+  credSim.mode = m;
+  document.getElementById('sim-mode-term').classList.toggle('active', m === 'term');
+  document.getElementById('sim-mode-pay').classList.toggle('active', m === 'pay');
+  runCredSim();
+}
+function credSimTarget() { return S.credits.find(c => c.id === document.getElementById('sim-credit').value); }
+function simStat(l, v, cls) { return `<div class="sim-stat"><span class="lab">${l}</span><span class="val" style="${cls || ''}">${v}</span></div>`; }
+function simBig(l, v, sub) { return `<div class="sim-big"><div class="top"><span>${l}</span><b>${v}</b></div><div class="bot">${sub}</div></div>`; }
+
+function runCredSim() {
+  const box = document.getElementById('sim-result');
+  const hint = document.getElementById('sim-hint');
+  const applyBtn = document.getElementById('sim-apply');
+  if (!box) return;
+  const c = credSimTarget();
+  const amount = Math.max(0, parseFloat(document.getElementById('sim-amount').value) || 0);
+  const disabled = !c || amount <= 0;
+  applyBtn.disabled = disabled;
+  applyBtn.style.opacity = disabled ? '.4' : '1';
+  applyBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+
+  if (!c) { box.innerHTML = `<p style="font-size:.85rem;color:var(--text3);text-align:center;padding:14px 0">Selecione um crédito ativo.</p>`; hint.textContent = ''; return; }
+  const i = credRate(c);
+  const outstanding = creditOutstanding(c);
+  const P = Number(c.monthly) || 0;
+  const commission = credR2(amount * CRED_COMMISSION);
+  const cost = credR2(amount + commission);
+
+  if (credSim.tab === 'once') {
+    if (amount <= 0) { box.innerHTML = `<p style="font-size:.85rem;color:var(--text3);text-align:center;padding:14px 0">Introduza um montante para simular.</p>`; hint.textContent = ''; return; }
+    const nOld = credRemMonths(outstanding, i, P);
+    let rows = '';
+    if (amount >= outstanding) {
+      const savedFull = Math.max(0, P * nOld - outstanding);
+      rows += `<div style="text-align:center;padding:6px 0"><div style="font-weight:700;color:var(--brand-l)">Liquidação total</div><div style="font-size:12px;color:var(--text3)">O montante cobre toda a dívida.</div></div>`;
+      rows += simStat('Necessário p/ liquidar', fmt(outstanding));
+      rows += simStat('Comissão (0,5%)', fmt(outstanding * CRED_COMMISSION), 'color:var(--gold)');
+      rows += simStat('Custo total', fmt(outstanding * (1 + CRED_COMMISSION)), 'color:#fff');
+      rows += simStat('Juros poupados', fmt(savedFull), 'color:var(--brand-l);font-weight:800');
+    } else if (credSim.mode === 'term') {
+      const newBal = outstanding - amount;
+      const nNew = credRemMonths(newBal, i, P);
+      const cut = (nOld === Infinity || nNew === Infinity) ? 0 : (nOld - nNew);
+      const sav = Math.max(0, P * (nOld - nNew) - amount);
+      rows += simStat('Comissão legal (0,5%)', fmt(commission), 'color:var(--gold)');
+      rows += simStat('Custo total da operação', fmt(cost), 'color:#fff');
+      rows += simStat('Nova dívida', fmt(newBal));
+      rows += simBig('Prazo cortado', `${cut} meses`, `${nOld} → ${nNew} prestações`);
+      rows += simStat('Novo fim previsto', credLabel(nNew).full, 'color:#fff');
+      rows += simStat('Juros poupados', fmt(sav), 'color:var(--brand-l);font-weight:800');
+    } else {
+      const newBal = outstanding - amount;
+      const newP = credPaymentFor(newBal, i, nOld);
+      const sav = Math.max(0, nOld * (P - newP) - amount);
+      rows += simStat('Comissão legal (0,5%)', fmt(commission), 'color:var(--gold)');
+      rows += simStat('Custo total da operação', fmt(cost), 'color:#fff');
+      rows += simStat('Nova dívida', fmt(newBal));
+      rows += simBig('Nova prestação', fmt(newP), `poupa ${fmt(P - newP)}/mês`);
+      rows += simStat('Prazo mantido', `${nOld} meses`, 'color:#fff');
+      rows += simStat('Juros poupados', fmt(sav), 'color:var(--brand-l);font-weight:800');
+    }
+    box.innerHTML = rows;
+    hint.textContent = 'Reduz o capital do crédito e regista no histórico.';
+  } else {
+    if (amount <= 0) { box.innerHTML = `<p style="font-size:.85rem;color:var(--text3);text-align:center;padding:14px 0">Defina um valor de bónus anual.</p>`; hint.textContent = ''; return; }
+    const base = simulateCredits([{ ...c, recurring: 0 }], true);
+    const boost = simulateCredits([{ ...c, recurring: amount }], true);
+    const eB = base.endByCredit[c.id], eR = boost.endByCredit[c.id];
+    const cut = (eB != null && eR != null) ? Math.max(0, eB - eR) : 0;
+    const sav = Math.max(0, base.totalInterest - boost.totalInterest);
+    let rows = '';
+    rows += simStat('Injeção a cada 12 meses', fmt(amount), 'color:#fff');
+    rows += simStat('Comissão anual (0,5%)', fmt(commission), 'color:var(--gold)');
+    rows += simBig('Antecipação', `${cut} meses`, `novo fim: ${credLabel((eR || 0) + 1).full}`);
+    rows += simStat('Sem bónus terminava', credLabel((eB || 0) + 1).full);
+    rows += simStat('Juros poupados (total)', fmt(sav), 'color:var(--brand-l);font-weight:800');
+    box.innerHTML = rows;
+    hint.textContent = 'Fica ativo e recalcula o gráfico automaticamente.';
+  }
+}
+
+function applyCredSim() {
+  const c = credSimTarget();
+  if (!c) return;
+  const amount = Math.max(0, parseFloat(document.getElementById('sim-amount').value) || 0);
+  if (amount <= 0) return;
+  const i = credRate(c);
+  const P = Number(c.monthly) || 0;
+  const outstanding = creditOutstanding(c);
+  const now = new Date().toLocaleDateString('pt-PT');
+
+  if (credSim.tab === 'once') {
+    const nOld = credRemMonths(outstanding, i, P);
+    const applied = Math.min(amount, outstanding);
+    const commission = credR2(applied * CRED_COMMISSION);
+    let saved = 0, op = '';
+    if (applied >= outstanding) {
+      saved = Math.max(0, P * nOld - outstanding);
+      c.paid = credR2((Number(c.paid) || 0) + applied); c.remaining = 0; op = 'Liquidação Total';
+    } else if (credSim.mode === 'term') {
+      const newBal = outstanding - applied;
+      const nNew = credRemMonths(newBal, i, P);
+      saved = Math.max(0, P * (nOld - nNew) - applied);
+      c.paid = credR2((Number(c.paid) || 0) + applied);
+      if (isFinite(nNew)) c.remaining = nNew;
+      op = 'Abate · Reduzir Prazo';
+    } else {
+      const newBal = outstanding - applied;
+      const newP = credPaymentFor(newBal, i, nOld);
+      saved = Math.max(0, nOld * (P - newP) - applied);
+      c.paid = credR2((Number(c.paid) || 0) + applied);
+      c.monthly = credR2(newP);
+      op = 'Abate · Reduzir Prestação';
+    }
+    S.creditLog.push({ date: now, credit: c.name, op, capital: credR2(applied), commission, saved: credR2(saved) });
+  } else {
+    c.recurring = credR2(amount);
+    S.creditLog.push({ date: now, credit: c.name, op: `Bónus Anual ${fmt0(amount)}`, capital: credR2(amount), commission: credR2(amount * CRED_COMMISSION), saved: 0 });
+  }
+  save(); renderCredits(); renderFin(); renderDashboard();
+  toast('Amortização aplicada', 'var(--brand)');
+}
+
+/* ═══════════ FORM · PARTILHA ═══════════ */
+function toggleCredSplit() {
+  const tgl = document.getElementById('cred-split-toggle');
+  const on = !tgl.classList.contains('on');
+  tgl.classList.toggle('on', on);
+  document.getElementById('cred-split-fields').style.display = on ? 'grid' : 'none';
+  updateCredShareHint();
+}
+function updateCredShareHint() {
+  const tgl = document.getElementById('cred-split-toggle');
+  if (!tgl) return;
+  const on = tgl.classList.contains('on');
+  const pay = parseFloat(document.getElementById('cred-monthly').value) || 0;
+  const share = on ? (parseInt(document.getElementById('cred-share').value, 10) || 100) : 100;
+  const valEl = document.getElementById('cred-share-val');
+  const hintEl = document.getElementById('cred-share-hint');
+  if (valEl) valEl.textContent = share + '%';
+  if (hintEl) hintEl.textContent = fmt(pay * share / 100) + ' / mês';
 }
 
 function creditEndDate(c) {
@@ -3313,5 +3649,11 @@ Object.assign(window, {
   setPeriod,
   showCatEditor,
   showTab,
-  updateInvPrice
+  updateInvPrice,
+  runCredSim,
+  applyCredSim,
+  setCredSimTab,
+  setCredSimMode,
+  toggleCredSplit,
+  updateCredShareHint
 });
