@@ -1338,6 +1338,38 @@ function resolveColor(c) {
   }
   return c || '#10b981';
 }
+// Plugin: desenha a percentagem sobre cada fatia do donut (legível em qualquer cor)
+const donutPctLabels = {
+  id: 'donutPctLabels',
+  afterDatasetsDraw(chart) {
+    const ds = chart.data.datasets[0];
+    if (!ds) return;
+    const total = ds.data.reduce((a, b) => a + (b || 0), 0);
+    if (!total) return;
+    const ctx = chart.ctx;
+    chart.getDatasetMeta(0).data.forEach((arc, i) => {
+      if (!chart.getDataVisibility(i)) return;
+      const p = (ds.data[i] || 0) / total * 100;
+      if (p < 6) return;
+      const angle = (arc.startAngle + arc.endAngle) / 2;
+      const r = (arc.innerRadius + arc.outerRadius) / 2;
+      const x = arc.x + Math.cos(angle) * r;
+      const y = arc.y + Math.sin(angle) * r;
+      const txt = p.toFixed(0) + '%';
+      ctx.save();
+      ctx.font = '700 12px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,.5)';
+      ctx.strokeText(txt, x, y);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(txt, x, y);
+      ctx.restore();
+    });
+  }
+};
+
 function drawTimeDonut(cats, byMain, total) {
   const totalEl = document.getElementById('time-donut-total');
   if (totalEl) totalEl.textContent = fmtH(total);
@@ -1350,7 +1382,7 @@ function drawTimeDonut(cats, byMain, total) {
       return `<div class="tl-item" data-i="${i}" onclick="toggleTimeSlice(${i})" title="Clique para esconder/mostrar">
         <span class="tl-dot" style="background:${resolveColor(x.cat.color)}"></span>
         <div class="tl-name">${esc(x.cat.icon || '⏱')} ${esc(x.cat.name)}</div>
-        <div class="tl-pct">${p.toFixed(0)}%<span class="tl-h">${fmtH(x.h)}</span></div>
+        <div class="tl-pct">${p.toFixed(0)}%</div>
       </div>`;
     }).join('') : `<div style="color:var(--text3);font-size:.85rem;padding:14px">Sem registos este mês. Adicione tempo no formulário ao lado.</div>`;
   }
@@ -1359,6 +1391,7 @@ function drawTimeDonut(cats, byMain, total) {
   if (!items.length) { const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); return; }
   timeDonutChart = new Chart(canvas.getContext('2d'), {
     type: 'doughnut',
+    plugins: [donutPctLabels],
     data: {
       labels: items.map(x => x.cat.name),
       datasets: [{ data: items.map(x => x.h), backgroundColor: items.map(x => resolveColor(x.cat.color)), borderColor: '#18181b', borderWidth: 3, hoverOffset: 10 }]
@@ -1388,6 +1421,50 @@ function toggleTimeDetail() {
   const btn = document.getElementById('time-detail-toggle');
   if (el) el.style.display = timeDetailExpanded ? 'grid' : 'none';
   if (btn) btn.textContent = timeDetailExpanded ? '▲ Ocultar' : '▼ Mostrar';
+}
+
+/* Donut reutilizável (percentagens + legenda clicável) */
+const _donutCharts = {};
+function buildDonut(canvasId, legendId, items, unitFmt, centerId) {
+  items = (items || []).filter(x => x.value > 0).sort((a, b) => b.value - a.value);
+  const total = items.reduce((a, x) => a + x.value, 0);
+  const legend = document.getElementById(legendId);
+  const canvas = document.getElementById(canvasId);
+  if (centerId) { const el = document.getElementById(centerId); if (el) el.textContent = unitFmt(total); }
+  if (legend) {
+    legend.innerHTML = items.length ? items.map((x, i) => {
+      const p = total ? (x.value / total * 100) : 0;
+      return `<div class="tl-item" data-i="${i}" onclick="toggleDonutSlice('${canvasId}','${legendId}',${i})" title="Clique para esconder/mostrar">
+        <span class="tl-dot" style="background:${resolveColor(x.color)}"></span>
+        <div class="tl-name">${x.icon ? esc(x.icon) + ' ' : ''}${esc(x.label)}</div>
+        <div class="tl-pct">${p.toFixed(0)}%</div>
+      </div>`;
+    }).join('') : `<div style="color:var(--text3);font-size:.85rem;padding:12px">Sem dados para mostrar.</div>`;
+  }
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (_donutCharts[canvasId]) { _donutCharts[canvasId].destroy(); delete _donutCharts[canvasId]; }
+  if (!items.length) { const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); return; }
+  _donutCharts[canvasId] = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    plugins: [donutPctLabels],
+    data: { labels: items.map(x => x.label), datasets: [{ data: items.map(x => x.value), backgroundColor: items.map(x => resolveColor(x.color)), borderColor: '#18181b', borderWidth: 3, hoverOffset: 10 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '68%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: '#18181b', borderColor: '#3f3f46', borderWidth: 1, padding: 12, cornerRadius: 12, titleColor: '#fff', bodyColor: '#d4d4d8',
+          callbacks: { label: item => { const p = total ? (item.parsed / total * 100) : 0; return ` ${p.toFixed(1)}% · ${unitFmt(item.parsed)}`; } } }
+      }
+    }
+  });
+}
+function toggleDonutSlice(canvasId, legendId, i) {
+  const ch = _donutCharts[canvasId];
+  if (!ch) return;
+  ch.toggleDataVisibility(i);
+  ch.update();
+  const item = document.querySelector(`#${legendId} .tl-item[data-i="${i}"]`);
+  if (item) item.classList.toggle('off', !ch.getDataVisibility(i));
 }
 
 // ══════════════════════════════════════
@@ -1790,28 +1867,19 @@ function renderDashboard() {
 
   const categoryTotals = {};
   current.tx.filter(t => t.type === 'expense').forEach(t => categoryTotals[t.cat] = (categoryTotals[t.cat] || 0) + t.amount);
-  const topCats = Object.entries(categoryTotals).sort((a,b) => b[1]-a[1]).slice(0,5);
-  const maxCat = Math.max(...topCats.map(([,v]) => v), 0.01);
-  const topEl = document.getElementById('dash-top-expenses');
-  topEl.innerHTML = topCats.length ? topCats.map(([cat, value]) => `<div class="bar-row">
-    <div class="bar-label">${esc(cat)}</div>
-    <div class="bar-track"><div class="bar-fill" style="width:${(value/maxCat*100).toFixed(1)}%;background:var(--red)"></div></div>
-    <div class="bar-val">${fmt(value)}</div>
-  </div>`).join('') : '<div style="color:var(--text3);font-size:0.82rem">Sem despesas este mês</div>';
+  const topCats = Object.entries(categoryTotals).sort((a,b) => b[1]-a[1]).slice(0, 6);
+  buildDonut('dash-expenses-donut', 'dash-expenses-legend',
+    topCats.map(([cat, value], i) => ({ label: cat, value, color: CAT_COLORS[i % CAT_COLORS.length] })),
+    fmt, 'dash-expenses-total');
 
   const wealthRows = [
     { label: 'Património ativo', value: wealth.patrimonyAssets, color: 'var(--teal)' },
     { label: 'Investimentos', value: wealth.investments, color: 'var(--blue)' },
     { label: 'Reservas', value: wealth.reserves, color: 'var(--gold)' },
-    { label: 'Créditos', value: wealth.creditDebt, color: 'var(--red)' },
+    { label: 'Créditos (passivo)', value: wealth.creditDebt, color: 'var(--red)' },
     { label: 'Outros passivos', value: wealth.patrimonyLiabilities, color: 'var(--purple)' }
   ].filter(r => r.value > 0);
-  const maxWealth = Math.max(...wealthRows.map(r => r.value), 0.01);
-  document.getElementById('dash-wealth-breakdown').innerHTML = wealthRows.length ? wealthRows.map(r => `<div class="bar-row">
-    <div class="bar-label">${r.label}</div>
-    <div class="bar-track"><div class="bar-fill" style="width:${(r.value/maxWealth*100).toFixed(1)}%;background:${r.color}"></div></div>
-    <div class="bar-val">${fmt(r.value)}</div>
-  </div>`).join('') : '<div style="color:var(--text3);font-size:0.82rem">Sem património registado</div>';
+  buildDonut('dash-wealth-donut', 'dash-wealth-legend', wealthRows, fmt, 'dash-wealth-total');
 
   const signals = document.getElementById('dash-signals');
   const emergency = emergencyCalc();
@@ -4107,6 +4175,7 @@ Object.assign(window, {
   toggleTimeList,
   toggleTimeSlice,
   toggleTimeDetail,
+  toggleDonutSlice,
   openAccountModal,
   closeAccountModal,
   saveAccount,

@@ -122,8 +122,14 @@
   <div class="two-col" style="margin-top:24px">
     <div style="display:flex;flex-direction:column;gap:20px">
       <div class="card">
-        <div class="card-title"><span class="dot" style="background:var(--red)"></span>Maiores gastos do mês</div>
-        <div class="bar-group" id="dash-top-expenses"></div>
+        <div class="card-title"><span class="dot" style="background:var(--red)"></span>Despesas por Categoria</div>
+        <div class="dash-donut-wrap">
+          <div class="mini-donut">
+            <canvas id="dash-expenses-donut"></canvas>
+            <div class="time-donut-center"><div id="dash-expenses-total" style="font-size:1.4rem">0 €</div><div class="time-donut-caption">este mês</div></div>
+          </div>
+          <div id="dash-expenses-legend" class="time-legend" style="width:100%"></div>
+        </div>
       </div>
       <div class="card">
         <div class="card-title"><span class="dot" style="background:var(--gold)"></span>Sinais do sistema</div>
@@ -131,8 +137,14 @@
       </div>
     </div>
     <div class="card">
-      <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Composição Ativo / Passivo</div>
-      <div class="bar-group" id="dash-wealth-breakdown"></div>
+      <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Composição do Património</div>
+      <div class="dash-donut-wrap">
+        <div class="mini-donut">
+          <canvas id="dash-wealth-donut"></canvas>
+          <div class="time-donut-center"><div id="dash-wealth-total" style="font-size:1.3rem">0 €</div><div class="time-donut-caption">bruto</div></div>
+        </div>
+        <div id="dash-wealth-legend" class="time-legend" style="width:100%"></div>
+      </div>
     </div>
   </div>
 </div>

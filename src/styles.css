@@ -522,3 +522,6 @@ input[type=range]{accent-color:var(--brand)}
 .tl-pct{font-family:var(--font-mono);font-weight:800;font-size:1.05rem;color:#fff;display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}
 .tl-h{font-size:.66rem;font-weight:500;color:var(--text3)}
 @media(max-width:700px){.time-overview-grid{grid-template-columns:1fr}.time-donut-wrap{width:190px;height:190px}}
+.dash-donut-wrap{display:flex;flex-direction:column;align-items:center;gap:18px}
+.mini-donut{position:relative;width:180px;height:180px;flex-shrink:0}
+.dash-donut-wrap .time-legend{grid-template-columns:1fr}
