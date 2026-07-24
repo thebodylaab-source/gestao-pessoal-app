@@ -1236,59 +1236,23 @@ function renderTime() {
   cats.forEach(c => byMain[c.id] = 0);
   entries.forEach(e => byMain[e.mainCat] = (byMain[e.mainCat] || 0) + e.hours);
 
-  // KPIs
-  const kpis = document.getElementById('time-kpi-categories');
-  if (kpis) {
-    const totalCard = `<div class="kpi-card" style="--accent:var(--blue);--accent-bg:var(--blue-d)">
-      <label>Horas Registadas</label>
-      <div class="val">${fmtH(total)}</div>
-      <div class="sub">este mês</div>
-    </div>`;
-    const categoryCards = cats.map(cat => {
-      const h = byMain[cat.id] || 0;
-      return `<div class="kpi-card" style="--accent:${cat.color};--accent-bg:${softTimeColor(cat.color)}">
-        <label>${esc(cat.icon)} ${esc(cat.name)}</label>
-        <div class="val">${fmtH(h)}</div>
-        <div class="sub">${total ? pct(h, total) + ' do total' : '—'}</div>
-      </div>`;
-    }).join('');
-    kpis.innerHTML = totalCard + categoryCards;
-  }
-
-  // Circles
-  const circles = document.getElementById('time-circles');
-  circles.innerHTML = cats.map(cat => {
-    const h = byMain[cat.id] || 0;
-    const p = total > 0 ? h / total : 0;
-    const r = 38, cx = 44, cy = 44, stroke = 7;
-    const circ = 2 * Math.PI * r;
-    const dash = circ * p;
-    return `<div class="time-circle-card">
-      <div class="circle-label">${esc(timeCatLabel(cat))}</div>
-      <svg class="circle-svg" width="88" height="88" viewBox="0 0 88 88">
-        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--s3)" stroke-width="${stroke}"/>
-        <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${cat.color}" stroke-width="${stroke}"
-          stroke-dasharray="${dash.toFixed(2)} ${circ.toFixed(2)}"
-          stroke-linecap="round" transform="rotate(-90 ${cx} ${cy})"/>
-      </svg>
-      <div class="circle-val">${fmtH(h)}</div>
-      <div class="circle-pct">${total ? (p*100).toFixed(1) + '%' : '—'}</div>
-    </div>`;
-  }).join('');
+  // Donut interativo + legenda (percentagens)
+  drawTimeDonut(cats, byMain, total);
 
   // Subcat bars
   const subTotals = {};
   entries.forEach(e => { const k = e.mainCat + '|' + e.subCat; subTotals[k] = (subTotals[k] || 0) + e.hours; });
   const maxH = Math.max(...Object.values(subTotals), 0.01);
   const subBars = document.getElementById('time-subcat-bars');
-  const sortedSub = Object.entries(subTotals).sort((a,b) => b[1]-a[1]);
+  const sortedSub = Object.entries(subTotals).sort((a,b) => b[1]-a[1]).slice(0, 8);
   subBars.innerHTML = sortedSub.length ? sortedSub.map(([key, h]) => {
     const [main, sub] = key.split('|');
     const info = getTimeCat(main);
+    const pctTotal = total ? Math.round(h / total * 100) : 0;
     return `<div class="bar-row">
       <div class="bar-label">${esc(info.icon || '⏱')} ${esc(sub)}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${(h/maxH*100).toFixed(1)}%;background:${info.color || 'var(--gold)'}"></div></div>
-      <div class="bar-val">${fmtH(h)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(h/maxH*100).toFixed(1)}%;background:${resolveColor(info.color) || 'var(--gold)'}"></div></div>
+      <div class="bar-val"><span style="color:#fff;font-weight:700">${pctTotal}%</span> <span style="color:var(--text3);font-size:.72rem">${fmtH(h)}</span></div>
     </div>`;
   }).join('') : '<div style="color:var(--text3);font-size:0.82rem">Sem dados</div>';
 
@@ -1313,13 +1277,13 @@ function renderTime() {
         <div class="time-dash-row">
           <div class="time-dash-label">${esc(sub)}</div>
           <div class="time-dash-track"><div class="time-dash-fill" style="width:${(h / maxSub * 100).toFixed(1)}%;background:${cat.color || 'var(--blue)'}"></div></div>
-          <div class="time-dash-val">${fmtH(h)} · ${pct(h, total)}</div>
+          <div class="time-dash-val"><span style="color:#fff;font-weight:700">${total ? Math.round(h / total * 100) : 0}%</span> <span style="color:var(--text3);font-size:.72rem">${fmtH(h)}</span></div>
         </div>
       `).join('') : '<div class="time-dash-empty">Sem registos neste mes</div>';
       return `<div class="time-dash-group">
         <div class="time-dash-head">
           <div class="time-dash-title"><span>${esc(cat.icon || '⏱')}</span><span>${esc(cat.name)}</span></div>
-          <strong style="color:${cat.color || 'var(--blue)'}">${fmtH(catTotal)}</strong>
+          <strong style="color:${cat.color || 'var(--blue)'}">${total ? Math.round(catTotal / total * 100) : 0}% <span style="color:var(--text3);font-size:.8rem;font-weight:400">${fmtH(catTotal)}</span></strong>
         </div>
         <div class="time-dash-subrows">${rowHtml}</div>
       </div>`;
@@ -1364,6 +1328,67 @@ function renderTime() {
 }
 let timeListExpanded = false;
 function toggleTimeList() { timeListExpanded = !timeListExpanded; renderTime(); }
+
+let timeDonutChart = null;
+let timeDetailExpanded = false;
+function resolveColor(c) {
+  if (typeof c === 'string' && c.trim().startsWith('var(')) {
+    const name = c.trim().slice(4, -1).trim();
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#10b981';
+  }
+  return c || '#10b981';
+}
+function drawTimeDonut(cats, byMain, total) {
+  const totalEl = document.getElementById('time-donut-total');
+  if (totalEl) totalEl.textContent = fmtH(total);
+  const legend = document.getElementById('time-legend');
+  const canvas = document.getElementById('time-donut');
+  const items = cats.map(c => ({ cat: c, h: byMain[c.id] || 0 })).filter(x => x.h > 0).sort((a, b) => b.h - a.h);
+  if (legend) {
+    legend.innerHTML = items.length ? items.map((x, i) => {
+      const p = total ? (x.h / total * 100) : 0;
+      return `<div class="tl-item" data-i="${i}" onclick="toggleTimeSlice(${i})" title="Clique para esconder/mostrar">
+        <span class="tl-dot" style="background:${resolveColor(x.cat.color)}"></span>
+        <div class="tl-name">${esc(x.cat.icon || '⏱')} ${esc(x.cat.name)}</div>
+        <div class="tl-pct">${p.toFixed(0)}%<span class="tl-h">${fmtH(x.h)}</span></div>
+      </div>`;
+    }).join('') : `<div style="color:var(--text3);font-size:.85rem;padding:14px">Sem registos este mês. Adicione tempo no formulário ao lado.</div>`;
+  }
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (timeDonutChart) { timeDonutChart.destroy(); timeDonutChart = null; }
+  if (!items.length) { const c = canvas.getContext('2d'); c.clearRect(0, 0, canvas.width, canvas.height); return; }
+  timeDonutChart = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: items.map(x => x.cat.name),
+      datasets: [{ data: items.map(x => x.h), backgroundColor: items.map(x => resolveColor(x.cat.color)), borderColor: '#18181b', borderWidth: 3, hoverOffset: 10 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '68%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#18181b', borderColor: '#3f3f46', borderWidth: 1, padding: 12, cornerRadius: 12, titleColor: '#fff', bodyColor: '#d4d4d8',
+          callbacks: { label: item => { const p = total ? (item.parsed / total * 100) : 0; return ` ${p.toFixed(1)}% · ${fmtH(item.parsed)}`; } }
+        }
+      }
+    }
+  });
+}
+function toggleTimeSlice(i) {
+  if (!timeDonutChart) return;
+  timeDonutChart.toggleDataVisibility(i);
+  timeDonutChart.update();
+  const item = document.querySelector(`#time-legend .tl-item[data-i="${i}"]`);
+  if (item) item.classList.toggle('off', !timeDonutChart.getDataVisibility(i));
+}
+function toggleTimeDetail() {
+  timeDetailExpanded = !timeDetailExpanded;
+  const el = document.getElementById('time-category-dashboard');
+  const btn = document.getElementById('time-detail-toggle');
+  if (el) el.style.display = timeDetailExpanded ? 'grid' : 'none';
+  if (btn) btn.textContent = timeDetailExpanded ? '▲ Ocultar' : '▼ Mostrar';
+}
 
 // ══════════════════════════════════════
 // INVESTMENTS
@@ -4080,6 +4105,8 @@ Object.assign(window, {
   importSelectAll,
   confirmImport,
   toggleTimeList,
+  toggleTimeSlice,
+  toggleTimeDetail,
   openAccountModal,
   closeAccountModal,
   saveAccount,

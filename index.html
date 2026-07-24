@@ -391,8 +391,20 @@
     </div>
   </div>
 
-  <!-- KPIs -->
-  <div class="kpi-strip time-kpi-strip" id="time-kpi-categories"></div>
+  <!-- OVERVIEW: DONUT INTERATIVO + LEGENDA (%) -->
+  <div class="card" style="margin-bottom:24px">
+    <div class="card-title"><span class="dot" style="background:var(--brand)"></span>Distribuição do Tempo</div>
+    <div class="time-overview-grid">
+      <div class="time-donut-wrap">
+        <canvas id="time-donut"></canvas>
+        <div class="time-donut-center">
+          <div id="time-donut-total">0h</div>
+          <div class="time-donut-caption">este mês</div>
+        </div>
+      </div>
+      <div id="time-legend" class="time-legend"></div>
+    </div>
+  </div>
 
   <div class="two-col">
     <div style="display:flex;flex-direction:column;gap:20px">
@@ -454,20 +466,18 @@
         <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Últimos Registos</div>
         <div class="tx-wrap" id="time-list"></div>
       </div>
-      <!-- Donut circles -->
+      <!-- Bars by subcat (percentagem primeiro) -->
       <div class="card">
-        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Distribuição do Tempo</div>
-        <div class="time-circles" id="time-circles"></div>
-      </div>
-      <!-- Bars by subcat -->
-      <div class="card">
-        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Detalhe por Sub-categoria</div>
+        <div class="card-title"><span class="dot" style="background:var(--blue)"></span>Top Sub-categorias</div>
         <div class="bar-group" id="time-subcat-bars"></div>
       </div>
-      <!-- Dashboard by category/subcategory -->
+      <!-- Dashboard by category/subcategory (recolhível) -->
       <div class="card">
-        <div class="card-title"><span class="dot" style="background:var(--gold)"></span>Dashboard por Categoria e Sub-categoria</div>
-        <div class="time-category-dashboard" id="time-category-dashboard"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer" onclick="toggleTimeDetail()">
+          <div class="card-title" style="margin-bottom:0"><span class="dot" style="background:var(--gold)"></span>Detalhe por Categoria</div>
+          <button class="btn btn-ghost btn-sm" id="time-detail-toggle" type="button">▼ Mostrar</button>
+        </div>
+        <div class="time-category-dashboard" id="time-category-dashboard" style="display:none;margin-top:16px"></div>
       </div>
     </div>
   </div>
