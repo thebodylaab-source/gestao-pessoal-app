@@ -373,6 +373,9 @@ function normalizeState() {
   if (!Array.isArray(S.creditLog)) S.creditLog = [];
   if (!Array.isArray(S.importRules)) S.importRules = [];
   if (!Array.isArray(S.accounts)) S.accounts = [];
+  if (!Array.isArray(S.netWorthHistory)) S.netWorthHistory = [];
+  if (!S.settings || typeof S.settings !== 'object') S.settings = {};
+  S.settings = Object.assign({ savingsTarget: 30, fiMode: '25x', fiTarget: 0, fiReturn: 5, fiContribution: 0 }, S.settings);
   S.credits = (Array.isArray(S.credits) ? S.credits : []).map(c => ({
     ...c,
     share: (c.share == null ? 100 : Math.min(100, Math.max(1, Number(c.share) || 100))),
@@ -408,6 +411,8 @@ function resetState(data = {}) {
   S.creditLog = Array.isArray(data.creditLog) ? data.creditLog : [];
   S.importRules = Array.isArray(data.importRules) ? data.importRules : [];
   S.accounts = Array.isArray(data.accounts) ? data.accounts : [];
+  S.netWorthHistory = Array.isArray(data.netWorthHistory) ? data.netWorthHistory : [];
+  S.settings = (data.settings && typeof data.settings === 'object') ? data.settings : {};
   S.emergency = data.emergency && typeof data.emergency === 'object' ? data.emergency : createEmergencyState();
   S.patrimony = data.patrimony && typeof data.patrimony === 'object' ? data.patrimony : { items: [], categories: createDefaultPatrimonyCategories() };
   S.categories = data.categories && typeof data.categories === 'object' ? data.categories : createDefaultCategories();
@@ -447,7 +452,7 @@ function switchLocalUser(userId = null, options = {}) {
 }
 
 function stateSnapshot() {
-  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, creditLog: S.creditLog, importRules: S.importRules, accounts: S.accounts, emergency: S.emergency, patrimony: S.patrimony };
+  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, creditLog: S.creditLog, importRules: S.importRules, accounts: S.accounts, netWorthHistory: S.netWorthHistory, settings: S.settings, emergency: S.emergency, patrimony: S.patrimony };
   return d;
 }
 
@@ -896,6 +901,7 @@ function renderFin() {
   renderCreditLinkSelect();
   renderAccounts();
   renderAccountSelects();
+  renderRecurring();
   const m = S.months.fin.getMonth(), y = S.months.fin.getFullYear();
   const q = (document.getElementById('fin-search')?.value || '').toLowerCase();
   const period = S.periods.fin;
@@ -1526,7 +1532,27 @@ function deleteInvestment(id) {
   save(); renderInv(); renderBudget(); toast('Eliminado');
 }
 
+function projectValue(start, monthly, annualReturn, years) {
+  const r = (annualReturn || 0) / 100 / 12; let bal = start; const months = years * 12;
+  for (let k = 0; k < months; k++) bal = bal * (1 + r) + monthly;
+  return bal;
+}
+function renderInvProjection() {
+  const el = document.getElementById('inv-projection');
+  if (!el) return;
+  const start = S.investments.reduce((s, i) => s + i.qty * i.currPrice, 0);
+  const monthly = Number(S.settings.fiContribution) > 0 ? Number(S.settings.fiContribution) : Math.max(0, avgMonthlySaved(3));
+  const ret = Number(S.settings.fiReturn) || 5;
+  const tiles = [5, 10, 20].map(y => { const fv = projectValue(start, monthly, ret, y); const contributed = start + monthly * y * 12; return { y, fv, growth: fv - contributed }; });
+  el.innerHTML = `
+    <div style="font-size:.82rem;color:var(--text2);margin-bottom:14px">Base: <strong style="color:#fff">${fmt(start)}</strong> investido${monthly > 0 ? ` + <strong style="color:#fff">${fmt(monthly)}/mês</strong>` : ''} a ${ret}%/ano.${monthly <= 0 ? ' <span style="color:var(--gold)">Define um reforço mensal nas Metas para ver o efeito bola de neve.</span>' : ''}</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+      ${tiles.map(t => `<div class="proj-tile"><div class="proj-y">${t.y} anos</div><div class="proj-fv">${fmt0(t.fv)}</div><div class="proj-growth">+${fmt0(t.growth)} de juros</div></div>`).join('')}
+    </div>
+    <div style="margin-top:12px;font-size:.72rem;color:var(--text3)">Estimativa com retorno constante — os mercados oscilam e nada é garantido. O que mais pesa é o tempo e a consistência dos reforços.</div>`;
+}
 function renderInv() {
+  renderInvProjection();
   const total = S.investments.reduce((s,i) => s + i.qty * i.currPrice, 0);
   const invested = S.investments.reduce((s,i) => s + i.qty * i.buyPrice, 0);
   const gain = total - invested;
@@ -1889,6 +1915,235 @@ function renderDashboard() {
     { label: 'Registos de tempo', value: `${S.timeEntries.length}`, tone: S.timeEntries.length ? 'good' : 'warn' },
     { label: 'Itens de património', value: `${S.patrimony.items.length}`, tone: S.patrimony.items.length ? 'good' : 'warn' }
   ].map(s => `<div class="dash-signal ${s.tone}"><span>${s.label}</span><strong>${s.value}</strong></div>`).join('');
+
+  // Riqueza: património ao longo do tempo (#1), poupança+meta (#2), FI (#3), insights (#7)
+  captureNetWorth(wealth);
+  drawNetWorthChart();
+  renderSavingsMeta(current);
+  renderFI(wealth, current);
+  renderInsights(current, previous, wealth);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RIQUEZA · métricas para crescer mais depressa
+═══════════════════════════════════════════════════════════ */
+function avgMonthlySaved(months = 3) {
+  const vals = [];
+  for (let i = 1; i <= months; i++) {
+    const d = new Date(); d.setMonth(d.getMonth() - i);
+    const s = monthStats(d);
+    if (s.tx.length) vals.push(s.saved);
+  }
+  if (!vals.length) { const c = monthStats(new Date()); return c.saved; }
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+function avgMonthlyExpenses(months = 3) {
+  const vals = [];
+  for (let i = 0; i < months; i++) {
+    const d = new Date(); d.setMonth(d.getMonth() - i);
+    const s = monthStats(d);
+    if (s.tx.length) vals.push(s.expenses);
+  }
+  if (!vals.length) return monthStats(new Date()).expenses;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+// #1 — snapshot mensal do património
+function captureNetWorth(wealth) {
+  const ym = new Date().toISOString().slice(0, 7);
+  if (!Array.isArray(S.netWorthHistory)) S.netWorthHistory = [];
+  const rec = { ym, net: credR2(wealth.net), assets: credR2(wealth.assets), liabilities: credR2(wealth.liabilities) };
+  const existing = S.netWorthHistory.find(x => x.ym === ym);
+  let changed = false;
+  if (existing) { if (existing.net !== rec.net || existing.assets !== rec.assets || existing.liabilities !== rec.liabilities) { Object.assign(existing, rec); changed = true; } }
+  else { S.netWorthHistory.push(rec); changed = true; }
+  if (changed) { S.netWorthHistory.sort((a, b) => a.ym.localeCompare(b.ym)); try { saveLocal(); } catch (e) {} }
+}
+
+const MONTHS_ABBR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+function ymLabel(ym) { const [y, m] = ym.split('-'); return `${MONTHS_ABBR[(+m) - 1]} ${String(y).slice(2)}`; }
+
+let netWorthChart = null;
+function drawNetWorthChart() {
+  const canvas = document.getElementById('dash-networth-chart');
+  const growthEl = document.getElementById('nw-growth');
+  const hist = (S.netWorthHistory || []).slice();
+  if (growthEl) {
+    if (hist.length >= 2) {
+      const first = hist[0].net, last = hist[hist.length - 1].net;
+      const prev = hist[hist.length - 2].net;
+      const totalGrowth = last - first;
+      const mom = last - prev;
+      const momPct = prev ? (mom / Math.abs(prev) * 100) : 0;
+      growthEl.innerHTML = `<div style="font-family:var(--font-mono);font-weight:800;font-size:1.05rem;color:${totalGrowth >= 0 ? 'var(--brand-l)' : 'var(--red)'}">${totalGrowth >= 0 ? '+' : ''}${fmt(totalGrowth)}</div>
+        <div style="font-size:.72rem;color:var(--text3)">desde ${ymLabel(hist[0].ym)} · ${mom >= 0 ? '+' : ''}${momPct.toFixed(1)}% no último mês</div>`;
+    } else growthEl.innerHTML = `<div style="font-size:.75rem;color:var(--text3)">A registar o 1.º mês — volta no próximo para ver a linha a subir.</div>`;
+  }
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (netWorthChart) { netWorthChart.destroy(); netWorthChart = null; }
+  if (!hist.length) return;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 240);
+  grad.addColorStop(0, 'rgba(16,185,129,.35)'); grad.addColorStop(1, 'rgba(16,185,129,.02)');
+  netWorthChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: hist.map(h => ymLabel(h.ym)), datasets: [{ label: 'Património líquido', data: hist.map(h => h.net), borderColor: '#10b981', backgroundColor: grad, fill: true, borderWidth: 2.5, tension: .3, pointRadius: hist.length > 1 ? 3 : 4, pointBackgroundColor: '#10b981', pointHoverRadius: 6 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: '#18181b', borderColor: '#3f3f46', borderWidth: 1, padding: 12, cornerRadius: 12, titleColor: '#fff', bodyColor: '#d4d4d8', callbacks: { label: it => ' ' + fmt(it.parsed.y) } } },
+      scales: { x: { grid: { color: 'rgba(63,63,70,.25)', drawTicks: false }, border: { display: false }, ticks: { color: '#71717a', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } }, y: { grid: { color: 'rgba(63,63,70,.25)' }, border: { display: false }, ticks: { color: '#71717a', callback: v => fmt0(v) } } }
+    }
+  });
+}
+
+// #2 — taxa de poupança + meta
+function renderSavingsMeta(current) {
+  const el = document.getElementById('dash-savings-meta');
+  if (!el) return;
+  const rate = current.income > 0 ? (current.saved / current.income) * 100 : 0;
+  const target = Number(S.settings.savingsTarget) || 30;
+  const avg = avgMonthlySaved(3);
+  const avgRate = (() => { let inc = 0, sav = 0; for (let i = 1; i <= 3; i++) { const d = new Date(); d.setMonth(d.getMonth() - i); const s = monthStats(d); inc += s.income; sav += s.saved; } return inc > 0 ? sav / inc * 100 : 0; })();
+  const pctOfTarget = target > 0 ? Math.min(100, Math.max(0, rate / target * 100)) : 0;
+  const barColor = rate >= target ? 'var(--brand)' : rate >= target * 0.6 ? 'var(--gold)' : 'var(--red)';
+  el.innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px">
+      <div style="font-family:var(--font-sans);font-weight:800;font-size:2.2rem;color:${rate >= 0 ? '#fff' : 'var(--red)'};line-height:1">${rate.toFixed(0)}%</div>
+      <div style="font-size:.8rem;color:var(--text2)">este mês · meta ${target}%</div>
+    </div>
+    <div style="height:10px;border-radius:6px;background:var(--s3);overflow:hidden;margin-bottom:6px"><div style="height:100%;border-radius:6px;background:${barColor};width:${pctOfTarget.toFixed(0)}%;transition:width .6s"></div></div>
+    <div style="font-size:.78rem;color:var(--text2)">${rate >= target ? '✅ Estás acima da meta — excelente ritmo.' : `Faltam ${(target - rate).toFixed(0)} p.p. para a meta.`} Média 3 meses: <strong style="color:#fff">${avgRate.toFixed(0)}%</strong> (${fmt(avg)}/mês).</div>
+    <div style="margin-top:10px;font-size:.72rem;color:var(--text3)">Cada +1% de poupança tira meses ao caminho para a liberdade financeira. <a onclick="openGoalsModal()" style="color:var(--brand-l);cursor:pointer">Ajustar meta</a></div>`;
+}
+
+// #3 — Independência financeira / número mágico
+function renderFI(wealth, current) {
+  const el = document.getElementById('dash-fi');
+  if (!el) return;
+  const s = S.settings;
+  const annualExpenses = avgMonthlyExpenses(3) * 12;
+  const targetNum = s.fiMode === 'fixed' ? (Number(s.fiTarget) || 0) : annualExpenses * 25;
+  const currentWealth = Math.max(0, wealth.net);
+  const monthly = Number(s.fiContribution) > 0 ? Number(s.fiContribution) : Math.max(0, avgMonthlySaved(3));
+  const r = (Number(s.fiReturn) || 0) / 100 / 12;
+  const progress = targetNum > 0 ? Math.min(100, currentWealth / targetNum * 100) : 0;
+  // projeção mês-a-mês
+  let months = 0, bal = currentWealth;
+  if (targetNum > currentWealth) {
+    if (monthly <= 0 && r <= 0) months = Infinity;
+    else { while (bal < targetNum && months < 1200) { bal = bal * (1 + r) + monthly; months++; } if (months >= 1200) months = Infinity; }
+  }
+  const etaYear = months === Infinity ? null : (() => { const d = new Date(); d.setMonth(d.getMonth() + months); return d; })();
+  // efeito de +100€/mês
+  let months2 = 0, bal2 = currentWealth; const monthly2 = monthly + 100;
+  if (targetNum > currentWealth) { while (bal2 < targetNum && months2 < 1200) { bal2 = bal2 * (1 + r) + monthly2; months2++; } if (months2 >= 1200) months2 = Infinity; }
+  const saved = (months !== Infinity && months2 !== Infinity) ? months - months2 : 0;
+  el.innerHTML = `
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <div><div style="font-size:.72rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">Número mágico</div><div style="font-family:var(--font-mono);font-weight:800;font-size:1.5rem;color:var(--gold)">${targetNum > 0 ? fmt(targetNum) : '—'}</div></div>
+      <div style="text-align:right"><div style="font-size:.72rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">Livre em</div><div style="font-family:var(--font-mono);font-weight:800;font-size:1.5rem;color:#fff">${etaYear ? etaYear.getFullYear() : (targetNum <= currentWealth ? 'já! 🎉' : '—')}</div></div>
+    </div>
+    <div style="height:10px;border-radius:6px;background:var(--s3);overflow:hidden;margin-bottom:6px"><div style="height:100%;border-radius:6px;background:linear-gradient(90deg,var(--gold),var(--brand));width:${progress.toFixed(0)}%;transition:width .6s"></div></div>
+    <div style="font-size:.78rem;color:var(--text2)">${progress.toFixed(0)}% do caminho · ${months === Infinity ? 'Aumenta a poupança para começar a contar.' : (etaYear ? `faltam ~${(months / 12).toFixed(1)} anos` : 'objetivo já atingido')}</div>
+    ${saved > 0 ? `<div style="margin-top:10px;padding:8px 12px;border-radius:10px;background:var(--teal-d);border:1px solid rgba(16,185,129,.25);font-size:.78rem;color:var(--brand-l)">💡 Poupares +100€/mês antecipa a tua liberdade em <strong>${saved} meses</strong>.</div>` : ''}
+    <div style="margin-top:8px;font-size:.72rem;color:var(--text3)">Base: ${s.fiMode === 'fixed' ? 'alvo fixo' : '25× gastos anuais'} · ${monthly > 0 ? fmt(monthly) + '/mês' : 'sem poupança'} · ${(Number(s.fiReturn) || 0)}%/ano. <a onclick="openGoalsModal()" style="color:var(--brand-l);cursor:pointer">Ajustar</a></div>`;
+}
+
+// #7 — Insights acionáveis
+function renderInsights(current, previous, wealth) {
+  const el = document.getElementById('dash-insights');
+  if (!el) return;
+  const out = [];
+  // taxa de poupança
+  const rate = current.income > 0 ? current.saved / current.income * 100 : 0;
+  const target = Number(S.settings.savingsTarget) || 30;
+  if (current.income > 0 && rate < target) out.push({ icon: '🎯', tone: 'warn', text: `A tua taxa de poupança (${rate.toFixed(0)}%) está abaixo da meta de ${target}%. Cortar ${fmt((target - rate) / 100 * current.income)} de despesa este mês põe-te lá.` });
+  else if (rate >= target && current.income > 0) out.push({ icon: '🚀', tone: 'good', text: `Poupança de ${rate.toFixed(0)}% — acima da meta. Investe o excedente para o juro composto trabalhar por ti.` });
+  // categoria que disparou vs mês anterior
+  const catNow = {}, catPrev = {};
+  current.tx.filter(t => t.type === 'expense').forEach(t => catNow[t.cat] = (catNow[t.cat] || 0) + t.amount);
+  previous.tx.filter(t => t.type === 'expense').forEach(t => catPrev[t.cat] = (catPrev[t.cat] || 0) + t.amount);
+  let worst = null;
+  Object.keys(catNow).forEach(c => { const prev = catPrev[c] || 0; if (prev > 0) { const chg = (catNow[c] - prev) / prev * 100; if (chg > 20 && (!worst || chg > worst.chg)) worst = { c, chg, delta: catNow[c] - prev }; } });
+  if (worst) out.push({ icon: '📈', tone: 'bad', text: `Gastaste +${worst.chg.toFixed(0)}% em ${esc(worst.c)} vs mês anterior (+${fmt(worst.delta)}). Vale a pena olhar.` });
+  // dívida cara
+  if (S.credits.length) {
+    const worstCredit = [...S.credits].filter(c => creditOutstanding(c) > 0).sort((a, b) => (Number(b.rate) || 0) - (Number(a.rate) || 0))[0];
+    if (worstCredit) {
+      const i = credRate(worstCredit), P = Number(worstCredit.monthly) || 0, out0 = creditOutstanding(worstCredit);
+      const nOld = credRemMonths(out0, i, P), lump = Math.min(5000, out0);
+      const nNew = credRemMonths(out0 - lump, i, P);
+      const sav = (isFinite(nOld) && isFinite(nNew)) ? Math.max(0, P * (nOld - nNew) - lump) : 0;
+      out.push({ icon: '💥', tone: 'warn', text: `O teu crédito mais caro é "${esc(worstCredit.name)}" a ${(Number(worstCredit.rate) || 0).toFixed(2)}% TAN. Amortizar ${fmt(lump)} pouparia ~${fmt(sav)} em juros — melhor que um investimento médio.` });
+    }
+  }
+  // fugas recorrentes
+  const rec = detectRecurring();
+  if (rec.length) { const annual = rec.reduce((a, r) => a + r.monthly * 12, 0); out.push({ icon: '🔍', tone: 'warn', text: `Detetei ${rec.length} gasto(s) recorrente(s) ≈ ${fmt(annual)}/ano. Cancela o que não usas e investe essa folga.` }); }
+  // net worth trend
+  if ((S.netWorthHistory || []).length >= 2) {
+    const h = S.netWorthHistory; const d = h[h.length - 1].net - h[h.length - 2].net;
+    out.push({ icon: d >= 0 ? '📊' : '⚠️', tone: d >= 0 ? 'good' : 'bad', text: d >= 0 ? `O teu património cresceu ${fmt(d)} no último mês. Mantém o ritmo!` : `O teu património desceu ${fmt(-d)} no último mês. Revê despesas e passivos.` });
+  }
+  if (!out.length) out.push({ icon: '✅', tone: 'good', text: 'Regista receitas, despesas e património para eu te dar recomendações personalizadas.' });
+  el.innerHTML = out.map(o => `<div class="insight ${o.tone}"><span class="insight-ico">${o.icon}</span><span>${o.text}</span></div>`).join('');
+}
+
+/* Metas modal */
+function openGoalsModal() {
+  const s = S.settings;
+  document.getElementById('goal-savings').value = s.savingsTarget ?? 30;
+  document.getElementById('goal-fi-mode').value = s.fiMode || '25x';
+  document.getElementById('goal-fi-target').value = s.fiTarget || '';
+  document.getElementById('goal-return').value = s.fiReturn ?? 5;
+  document.getElementById('goal-contribution').value = s.fiContribution || '';
+  onGoalFiModeChange();
+  document.getElementById('goals-modal').style.display = 'flex';
+}
+function closeGoalsModal() { document.getElementById('goals-modal').style.display = 'none'; }
+function onGoalFiModeChange() { document.getElementById('goal-fi-target-field').style.display = document.getElementById('goal-fi-mode').value === 'fixed' ? 'block' : 'none'; }
+function saveGoals() {
+  S.settings = Object.assign({}, S.settings, {
+    savingsTarget: Math.max(0, Math.min(100, parseFloat(document.getElementById('goal-savings').value) || 30)),
+    fiMode: document.getElementById('goal-fi-mode').value,
+    fiTarget: Math.max(0, parseFloat(document.getElementById('goal-fi-target').value) || 0),
+    fiReturn: Math.max(0, parseFloat(document.getElementById('goal-return').value) || 5),
+    fiContribution: Math.max(0, parseFloat(document.getElementById('goal-contribution').value) || 0)
+  });
+  save(); closeGoalsModal(); renderDashboard(); renderInv();
+  toast('Metas atualizadas', 'var(--brand)');
+}
+
+// #5 — deteção de gastos recorrentes (subscrições) a partir das transações
+function detectRecurring() {
+  const groups = {};
+  (S.transactions || []).filter(t => t.type === 'expense').forEach(t => {
+    const key = impExtractMerchant(t.desc) || impNorm(t.desc);
+    if (!key || key.length < 3) return;
+    (groups[key] = groups[key] || []).push(t);
+  });
+  const res = [];
+  Object.entries(groups).forEach(([key, txs]) => {
+    const months = new Set(txs.map(t => String(t.date || '').slice(0, 7)));
+    if (months.size < 2) return;
+    const avg = txs.reduce((a, t) => a + t.amount, 0) / txs.length;
+    if (avg <= 0) return;
+    res.push({ merchant: key, label: txs[txs.length - 1].desc, monthly: avg, count: txs.length, months: months.size, cat: txs[txs.length - 1].cat });
+  });
+  return res.sort((a, b) => b.monthly - a.monthly);
+}
+function renderRecurring() {
+  const el = document.getElementById('fin-recurring');
+  if (!el) return;
+  const rec = detectRecurring();
+  const totalEl = document.getElementById('fin-recurring-total');
+  const annual = rec.reduce((a, r) => a + r.monthly * 12, 0);
+  if (totalEl) totalEl.textContent = fmt(annual) + '/ano';
+  el.innerHTML = rec.length ? rec.slice(0, 12).map(r => `
+    <div class="rec-row">
+      <div class="rec-name">🔁 ${esc(r.label)}<span class="rec-meta">${r.months} meses · ${esc(r.cat || '—')}</span></div>
+      <div class="rec-amt">${fmt(r.monthly)}<span class="rec-year">${fmt(r.monthly * 12)}/ano</span></div>
+    </div>`).join('') : `<div style="color:var(--text3);font-size:.82rem;padding:8px 0">Sem padrões recorrentes ainda. Importa alguns meses de extrato para a app detetar subscrições.</div>`;
 }
 
 // ══════════════════════════════════════
@@ -2672,6 +2927,39 @@ function renderCredits() {
   populateCredSimSelect();
   runCredSim();
   renderCredHistory();
+  renderDebtStrategy();
+}
+
+// #4 — ordem de ataque à dívida (avalanche: TAN mais alta primeiro)
+function renderDebtStrategy() {
+  const el = document.getElementById('cred-avalanche');
+  if (!el) return;
+  const active = S.credits.filter(c => creditOutstanding(c) > 0.005 && (Number(c.monthly) || 0) > 0);
+  if (!active.length) { el.innerHTML = `<div style="color:var(--text3);font-size:.85rem">Sem créditos ativos para priorizar.</div>`; return; }
+  const ranked = active.map(c => {
+    const i = credRate(c), P = Number(c.monthly) || 0, out = creditOutstanding(c);
+    const n = credRemMonths(out, i, P);
+    const remInterest = isFinite(n) ? Math.max(0, P * n - out) : 0;
+    const lump = Math.min(1000, out);
+    const nNew = credRemMonths(out - lump, i, P);
+    const savePer1000 = (isFinite(n) && isFinite(nNew)) ? Math.max(0, P * (n - nNew) - lump) : 0;
+    return { c, tan: Number(c.rate) || 0, out, remInterest, savePer1000 };
+  }).sort((a, b) => b.tan - a.tan);
+  const totalRem = ranked.reduce((a, r) => a + r.remInterest, 0);
+  el.innerHTML = `
+    <div style="font-size:.82rem;color:var(--text2);margin-bottom:14px">Ataca primeiro a <strong style="color:#fff">TAN mais alta</strong> — é o teu melhor "investimento": retorno garantido, imediato e sem impostos. Juros ainda por pagar em toda a carteira: <strong style="color:var(--red)">${fmt(totalRem)}</strong>.</div>
+    ${ranked.map((r, idx) => `
+      <div class="aval-row${idx === 0 ? ' first' : ''}">
+        <div class="aval-rank">${idx + 1}</div>
+        <div style="flex:1;min-width:0">
+          <div class="aval-name">${idx === 0 ? '🎯 ' : ''}${esc(r.c.name)}${idx === 0 ? ' <span class="aval-tag">atacar primeiro</span>' : ''}</div>
+          <div class="aval-meta">${r.tan.toFixed(2)}% TAN · ${fmt(r.out)} em dívida</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-family:var(--font-mono);font-weight:700;color:var(--brand-l)">poupa ${fmt(r.savePer1000)}</div>
+          <div style="font-size:.66rem;color:var(--text3)">por cada 1.000€ abatidos</div>
+        </div>
+      </div>`).join('')}`;
 }
 
 function drawCredDomino() {
@@ -4181,5 +4469,9 @@ Object.assign(window, {
   saveAccount,
   editAccount,
   deleteAccount,
-  pickAccountColor
+  pickAccountColor,
+  openGoalsModal,
+  closeGoalsModal,
+  onGoalFiModeChange,
+  saveGoals
 });

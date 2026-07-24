@@ -82,9 +82,12 @@
 <!-- TAB: DASHBOARD -->
 <!-- ═══════════════════════════════════════════════════ -->
 <div class="page" id="page-dashboard">
-  <div style="margin-bottom:8px">
-    <h1 class="sec-title">Dashboard <span>Geral</span></h1>
-    <p class="sec-sub">Resumo global · gastos · poupança · património</p>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+    <div>
+      <h1 class="sec-title">Dashboard <span>Geral</span></h1>
+      <p class="sec-sub">Resumo global · gastos · poupança · património</p>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="openGoalsModal()">⚙ Metas de Riqueza</button>
   </div>
 
   <div class="dashboard-hero">
@@ -117,6 +120,36 @@
     <div class="dash-mini"><label>Dívida de créditos</label><strong id="dash-credit-debt">0,00 €</strong></div>
     <div class="dash-mini"><label>Reservas</label><strong id="dash-reserves">0,00 €</strong></div>
     <div class="dash-mini"><label>Investimentos</label><strong id="dash-investments">0,00 €</strong></div>
+  </div>
+
+  <!-- #1 EVOLUÇÃO DO PATRIMÓNIO LÍQUIDO -->
+  <div class="card" style="margin-top:24px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <div>
+        <div class="card-title" style="margin-bottom:4px"><span class="dot" style="background:var(--brand)"></span>Evolução do Património Líquido</div>
+        <div style="font-size:.8rem;color:var(--text2)">A tua riqueza ao longo do tempo — o gráfico que realmente importa.</div>
+      </div>
+      <div id="nw-growth" style="text-align:right"></div>
+    </div>
+    <div style="position:relative;height:240px"><canvas id="dash-networth-chart"></canvas></div>
+  </div>
+
+  <!-- #2 TAXA DE POUPANÇA + #3 INDEPENDÊNCIA FINANCEIRA -->
+  <div class="two-col" style="margin-top:24px">
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--teal)"></span>Taxa de Poupança</div>
+      <div id="dash-savings-meta"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot" style="background:var(--gold)"></span>Independência Financeira</div>
+      <div id="dash-fi"></div>
+    </div>
+  </div>
+
+  <!-- #7 INSIGHTS -->
+  <div class="card" style="margin-top:24px">
+    <div class="card-title"><span class="dot" style="background:var(--purple)"></span>Insights para crescer mais depressa</div>
+    <div id="dash-insights" class="dash-insights"></div>
   </div>
 
   <div class="two-col" style="margin-top:24px">
@@ -282,6 +315,18 @@
       <canvas id="chart-fin-donut" width="160" height="160" style="display:block;margin:0 auto 16px"></canvas>
       <div id="fin-legend" class="donut-legend"></div>
     </div>
+  </div>
+
+  <!-- #5 GASTOS RECORRENTES -->
+  <div class="card" style="margin-bottom:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <div>
+        <div class="card-title" style="margin-bottom:2px"><span class="dot" style="background:var(--gold)"></span>Gastos Recorrentes Detetados</div>
+        <div style="font-size:.78rem;color:var(--text2)">Subscrições e cobranças que se repetem — o dinheiro que foge sem dar conta.</div>
+      </div>
+      <div style="text-align:right"><div style="font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)">Custo anual estimado</div><div id="fin-recurring-total" style="font-family:var(--font-mono);font-weight:800;font-size:1.1rem;color:var(--gold)">0,00 €/ano</div></div>
+    </div>
+    <div id="fin-recurring" class="rec-list"></div>
   </div>
 
   <!-- TWO COL: FORM + LIST -->
@@ -527,6 +572,18 @@
       <div class="val" id="inv-kpi-count">0</div>
       <div class="sub">ativos</div>
     </div>
+  </div>
+
+  <!-- #6 PROJEÇÃO DE JURO COMPOSTO -->
+  <div class="card" style="margin-top:24px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <div>
+        <div class="card-title" style="margin-bottom:2px"><span class="dot" style="background:var(--brand)"></span>Projeção de Juro Composto</div>
+        <div style="font-size:.8rem;color:var(--text2)">Se mantiveres o ritmo, para onde cresce o teu dinheiro.</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="openGoalsModal()">⚙ Retorno / reforço</button>
+    </div>
+    <div id="inv-projection"></div>
   </div>
 
   <div class="two-col" style="margin-top:24px">
@@ -923,6 +980,12 @@
     <div style="position:relative;height:300px"><canvas id="cred-domino-chart"></canvas></div>
   </div>
 
+  <!-- #4 ORDEM DE ATAQUE À DÍVIDA -->
+  <div class="card" style="margin-bottom:24px">
+    <div class="card-title"><span class="dot" style="background:var(--red)"></span>Ordem de Ataque à Dívida (método avalanche)</div>
+    <div id="cred-avalanche"></div>
+  </div>
+
   <!-- CARDS + SIMULATOR -->
   <div class="cred-main-grid" style="display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start;margin-bottom:24px">
     <div>
@@ -1020,6 +1083,38 @@
       </table>
     </div>
     <div id="cred-history-empty" class="empty" style="padding:28px">Ainda não realizou nenhuma amortização. Use o simulador acima. ↑</div>
+  </div>
+</div>
+
+<!-- ── MODAL: METAS DE RIQUEZA ── -->
+<div id="goals-modal" style="display:none;position:fixed;inset:0;z-index:9000;align-items:center;justify-content:center;padding:16px">
+  <div style="position:absolute;inset:0;background:rgba(0,0,0,.7)" onclick="closeGoalsModal()"></div>
+  <div class="card" style="position:relative;width:100%;max-width:460px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="font-weight:800;color:#fff;font-size:1.1rem">⚙ Metas de Riqueza</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeGoalsModal()">✕</button>
+    </div>
+    <p style="font-size:.78rem;color:var(--text2);margin-bottom:18px">Estes valores alimentam a taxa de poupança, a projeção de independência financeira e os investimentos.</p>
+    <div class="form-grid">
+      <div class="field"><label>Meta de taxa de poupança (%)</label><input type="number" id="goal-savings" min="0" max="100" step="1" placeholder="30"></div>
+      <div class="field">
+        <label>Objetivo de independência financeira</label>
+        <select id="goal-fi-mode" onchange="onGoalFiModeChange()">
+          <option value="25x">Automático — 25× os gastos anuais (regra dos 4%)</option>
+          <option value="fixed">Valor fixo que eu defino</option>
+        </select>
+      </div>
+      <div class="field" id="goal-fi-target-field" style="display:none"><label>Valor alvo (€)</label><input type="number" id="goal-fi-target" min="0" step="1000" placeholder="500000"></div>
+      <div class="form-row">
+        <div class="field"><label>Retorno anual esperado (%)</label><input type="number" id="goal-return" min="0" max="30" step="0.5" placeholder="5"></div>
+        <div class="field"><label>Reforço mensal (€, opcional)</label><input type="number" id="goal-contribution" min="0" step="10" placeholder="auto"></div>
+      </div>
+      <p style="font-size:.72rem;color:var(--text3);line-height:1.5">Deixa o reforço mensal vazio para usar a tua poupança média real dos últimos meses. O retorno é uma estimativa — os mercados não são garantidos.</p>
+      <div style="display:flex;gap:10px;margin-top:2px">
+        <button class="btn btn-ghost btn-full" onclick="closeGoalsModal()">Cancelar</button>
+        <button class="btn btn-primary btn-full" onclick="saveGoals()">Guardar metas</button>
+      </div>
+    </div>
   </div>
 </div>
 
