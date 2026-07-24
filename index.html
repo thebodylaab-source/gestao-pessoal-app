@@ -213,6 +213,21 @@
     </div>
   </div>
 
+  <!-- CONTAS BANCÁRIAS -->
+  <div class="card" style="margin-bottom:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:0"><span class="dot" style="background:var(--brand)"></span>Contas Bancárias</div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="text-align:right">
+          <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)">Saldo total</div>
+          <div id="accounts-total" style="font-family:var(--font-mono);font-weight:800;font-size:1.15rem;color:#fff">0,00 €</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openAccountModal()">+ Conta</button>
+      </div>
+    </div>
+    <div id="accounts-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px"></div>
+  </div>
+
   <!-- KPIs -->
   <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr)">
     <div class="kpi-card" style="--accent:var(--teal);--accent-bg:var(--teal-d)">
@@ -286,9 +301,15 @@
             <select id="fin-sub-cat"></select>
           </div>
         </div>
-        <div class="field">
-          <label>Crédito associado</label>
-          <select id="fin-credit"></select>
+        <div class="form-row">
+          <div class="field">
+            <label>Conta bancária</label>
+            <select id="fin-account"></select>
+          </div>
+          <div class="field">
+            <label>Crédito associado</label>
+            <select id="fin-credit"></select>
+          </div>
         </div>
         <div class="field"><label>Nota (opcional)</label><textarea id="fin-note" placeholder="Detalhes…" style="min-height:50px"></textarea></div>
         <button class="btn btn-primary btn-full" id="fin-submit" onclick="addTransaction()">+ Adicionar</button>
@@ -980,6 +1001,34 @@
   </div>
 </div>
 
+<!-- ── MODAL: CONTA BANCÁRIA ── -->
+<div id="account-modal" style="display:none;position:fixed;inset:0;z-index:9000;align-items:center;justify-content:center;padding:16px">
+  <div style="position:absolute;inset:0;background:rgba(0,0,0,.7)" onclick="closeAccountModal()"></div>
+  <div class="card" style="position:relative;width:100%;max-width:440px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div id="account-modal-title" style="font-weight:800;color:#fff;font-size:1.1rem">Nova Conta</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeAccountModal()">✕</button>
+    </div>
+    <input type="hidden" id="acc-edit-id">
+    <div class="form-grid">
+      <div class="field"><label>Nome da conta</label><input type="text" id="acc-name" placeholder="ex: Conta à ordem"></div>
+      <div class="form-row">
+        <div class="field"><label>Banco</label><input type="text" id="acc-bank" placeholder="ex: Millennium"></div>
+        <div class="field"><label>Saldo inicial (€)</label><input type="number" id="acc-initial" placeholder="0,00" step="0.01"></div>
+      </div>
+      <div class="field"><label>IBAN (opcional)</label><input type="text" id="acc-iban" placeholder="PT50…"></div>
+      <div class="field">
+        <label>Cor</label>
+        <div id="acc-colors" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button class="btn btn-ghost btn-full" onclick="closeAccountModal()">Cancelar</button>
+        <button class="btn btn-primary btn-full" onclick="saveAccount()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── MODAL: IMPORTAR EXTRATO ── -->
 <div id="import-modal" style="display:none;position:fixed;inset:0;z-index:9000;align-items:center;justify-content:center;padding:16px">
   <div style="position:absolute;inset:0;background:rgba(0,0,0,.7)" onclick="closeImportModal()"></div>
@@ -1011,8 +1060,10 @@
       <div id="import-step-review" style="display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
           <div id="import-summary" style="font-size:.85rem;color:var(--text2)"></div>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-ghost btn-sm" onclick="importSelectAll(true)">Selecionar todas</button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <label style="font-size:.72rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Conta</label>
+            <select id="import-account" style="background:var(--s2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:.8rem;padding:6px 8px"></select>
+            <button class="btn btn-ghost btn-sm" onclick="importSelectAll(true)">Todas</button>
             <button class="btn btn-ghost btn-sm" onclick="importSelectAll(false)">Nenhuma</button>
           </div>
         </div>

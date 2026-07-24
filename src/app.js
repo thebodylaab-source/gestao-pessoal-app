@@ -267,7 +267,8 @@ function normalizeTransactions(input) {
     ...t,
     cat: cleanFinanceCategoryName(t?.cat || ''),
     subCat: t?.subCat || t?.subcat || 'Geral',
-    creditId: t?.type === 'expense' ? (t?.creditId || '') : ''
+    creditId: t?.type === 'expense' ? (t?.creditId || '') : '',
+    accountId: t?.accountId || ''
   })) : [];
 }
 
@@ -371,6 +372,7 @@ function normalizePatrimony(input) {
 function normalizeState() {
   if (!Array.isArray(S.creditLog)) S.creditLog = [];
   if (!Array.isArray(S.importRules)) S.importRules = [];
+  if (!Array.isArray(S.accounts)) S.accounts = [];
   S.credits = (Array.isArray(S.credits) ? S.credits : []).map(c => ({
     ...c,
     share: (c.share == null ? 100 : Math.min(100, Math.max(1, Number(c.share) || 100))),
@@ -405,6 +407,7 @@ function resetState(data = {}) {
   S.credits = Array.isArray(data.credits) ? data.credits : [];
   S.creditLog = Array.isArray(data.creditLog) ? data.creditLog : [];
   S.importRules = Array.isArray(data.importRules) ? data.importRules : [];
+  S.accounts = Array.isArray(data.accounts) ? data.accounts : [];
   S.emergency = data.emergency && typeof data.emergency === 'object' ? data.emergency : createEmergencyState();
   S.patrimony = data.patrimony && typeof data.patrimony === 'object' ? data.patrimony : { items: [], categories: createDefaultPatrimonyCategories() };
   S.categories = data.categories && typeof data.categories === 'object' ? data.categories : createDefaultCategories();
@@ -444,7 +447,7 @@ function switchLocalUser(userId = null, options = {}) {
 }
 
 function stateSnapshot() {
-  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, creditLog: S.creditLog, importRules: S.importRules, emergency: S.emergency, patrimony: S.patrimony };
+  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, creditLog: S.creditLog, importRules: S.importRules, accounts: S.accounts, emergency: S.emergency, patrimony: S.patrimony };
   return d;
 }
 
@@ -844,12 +847,13 @@ function addTransaction() {
   const cat = document.getElementById('fin-cat').value;
   const subCat = document.getElementById('fin-sub-cat')?.value || 'Geral';
   const creditId = S.finType === 'expense' ? (document.getElementById('fin-credit')?.value || '') : '';
+  const accountId = document.getElementById('fin-account')?.value || '';
   const date = document.getElementById('fin-date').value;
   const note = document.getElementById('fin-note').value.trim();
   if (!desc) { highlight('fin-desc'); return; }
   if (!amount || amount <= 0) { highlight('fin-amount'); return; }
   if (!date) { highlight('fin-date'); return; }
-  const payload = { id: UI.editing.transaction || uid(), type: S.finType, desc, amount, cat, subCat, creditId, date, note };
+  const payload = { id: UI.editing.transaction || uid(), type: S.finType, desc, amount, cat, subCat, creditId, accountId, date, note };
   const idx = S.transactions.findIndex(t => t.id === UI.editing.transaction);
   if (idx >= 0) S.transactions[idx] = payload;
   else S.transactions.push(payload);
@@ -872,6 +876,8 @@ function editTransaction(id) {
   document.getElementById('fin-cat').value = t.cat || '';
   renderFinSubcats(t.subCat || 'Geral');
   renderCreditLinkSelect(t.creditId || '');
+  renderAccountSelects();
+  const finAcc = document.getElementById('fin-account'); if (finAcc) finAcc.value = t.accountId || '';
   document.getElementById('fin-date').value = t.date || today();
   document.getElementById('fin-note').value = t.note || '';
   setEditMode('transaction', true);
@@ -888,6 +894,8 @@ function renderFin() {
   updateMonthLabels();
   updateCatSelects();
   renderCreditLinkSelect();
+  renderAccounts();
+  renderAccountSelects();
   const m = S.months.fin.getMonth(), y = S.months.fin.getFullYear();
   const q = (document.getElementById('fin-search')?.value || '').toLowerCase();
   const period = S.periods.fin;
@@ -1329,7 +1337,9 @@ function renderTime() {
     const bOrder = Number.isNaN(bCreated) ? b.index : bCreated;
     return bOrder - aOrder;
   }).map(({ entry }) => entry);
-  list.innerHTML = sorted.length ? sorted.map(e => {
+  const TIME_LIST_LIMIT = 5;
+  const shown = timeListExpanded ? sorted : sorted.slice(0, TIME_LIST_LIMIT);
+  const rowsHtml = shown.map(e => {
     const info = getTimeCat(e.mainCat);
     return `<div class="tx-row" style="grid-template-columns:34px 1fr auto auto">
       <div class="tx-icon" style="background:${softTimeColor(info.color || 'var(--blue)')}">${esc(info.icon || '⏱')}</div>
@@ -1343,8 +1353,17 @@ function renderTime() {
         <button class="btn btn-danger btn-sm" onclick="deleteTimeEntry('${e.id}')" title="Eliminar">×</button>
       </div>
     </div>`;
-  }).join('') : `<div class="empty"><div class="e-icon">◎</div>Sem registos neste mês</div>`;
+  }).join('');
+  let toggleHtml = '';
+  if (sorted.length > TIME_LIST_LIMIT) {
+    toggleHtml = timeListExpanded
+      ? `<button class="time-list-more" onclick="toggleTimeList()">▲ Ver menos</button>`
+      : `<button class="time-list-more" onclick="toggleTimeList()">▼ Ver todos (${sorted.length})</button>`;
+  }
+  list.innerHTML = sorted.length ? (rowsHtml + toggleHtml) : `<div class="empty"><div class="e-icon">◎</div>Sem registos neste mês</div>`;
 }
+let timeListExpanded = false;
+function toggleTimeList() { timeListExpanded = !timeListExpanded; renderTime(); }
 
 // ══════════════════════════════════════
 // INVESTMENTS
@@ -3585,6 +3604,99 @@ window.addEventListener('resize', () => {
 });
 
 /* ═══════════════════════════════════════════════════════════
+   CONTAS BANCÁRIAS (integradas com os movimentos)
+═══════════════════════════════════════════════════════════ */
+const ACCOUNT_COLORS = ['#10b981', '#38bdf8', '#a78bfa', '#e0b64d', '#f87171', '#5eead4', '#f472b6', '#a3e635'];
+let accountModalColor = ACCOUNT_COLORS[0];
+
+function accountBalance(acc) {
+  let bal = Number(acc.initial) || 0;
+  for (const t of S.transactions) {
+    if (t.accountId === acc.id) bal += (t.type === 'income' ? 1 : -1) * (Number(t.amount) || 0);
+  }
+  return bal;
+}
+function renderAccounts() {
+  const grid = document.getElementById('accounts-grid');
+  const totalEl = document.getElementById('accounts-total');
+  if (!grid) return;
+  const accs = S.accounts || [];
+  const total = accs.reduce((a, c) => a + accountBalance(c), 0);
+  if (totalEl) { totalEl.textContent = fmt(total); totalEl.style.color = total < 0 ? 'var(--red)' : '#fff'; }
+  grid.innerHTML = accs.length ? accs.map(a => {
+    const bal = accountBalance(a);
+    const nTx = S.transactions.filter(t => t.accountId === a.id).length;
+    return `<div class="acc-card" style="--acc:${a.color || '#10b981'}">
+      <div class="acc-top">
+        <div style="min-width:0">
+          <div class="acc-name">${esc(a.name)}</div>
+          <div class="acc-bank">${esc(a.bank || '')}${a.iban ? ' · ••' + esc(String(a.iban).replace(/\s/g, '').slice(-4)) : ''}</div>
+        </div>
+        <div class="acc-actions">
+          <button onclick="editAccount('${a.id}')" title="Editar">✎</button>
+          <button onclick="deleteAccount('${a.id}')" title="Eliminar">×</button>
+        </div>
+      </div>
+      <div class="acc-bal" style="color:${bal < 0 ? 'var(--red)' : '#fff'}">${fmt(bal)}</div>
+      <div class="acc-meta">${nTx} movimento${nTx === 1 ? '' : 's'}</div>
+    </div>`;
+  }).join('') : `<div class="empty" style="grid-column:1/-1;padding:24px">Sem contas. Adicione a primeira com “+ Conta” para acompanhar saldos e associar movimentos.</div>`;
+}
+function renderAccountSelects() {
+  const accs = S.accounts || [];
+  const opts = `<option value="">— sem conta —</option>` + accs.map(a => `<option value="${a.id}">${esc(a.name)}${a.bank ? ' (' + esc(a.bank) + ')' : ''}</option>`).join('');
+  const fin = document.getElementById('fin-account');
+  if (fin) { const prev = fin.value; fin.innerHTML = opts; if ([...fin.options].some(o => o.value === prev)) fin.value = prev; }
+  const imp = document.getElementById('import-account');
+  if (imp) { const prev = imp.value; imp.innerHTML = opts; if (prev && [...imp.options].some(o => o.value === prev)) imp.value = prev; else if (accs[0]) imp.value = accs[0].id; }
+}
+function renderAccountColors() {
+  const wrap = document.getElementById('acc-colors');
+  if (!wrap) return;
+  wrap.innerHTML = ACCOUNT_COLORS.map(c => `<button type="button" onclick="pickAccountColor('${c}')" style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid ${c === accountModalColor ? '#fff' : 'transparent'};cursor:pointer"></button>`).join('');
+}
+function pickAccountColor(c) { accountModalColor = c; renderAccountColors(); }
+function openAccountModal(id) {
+  const editing = (typeof id === 'string') ? S.accounts.find(a => a.id === id) : null;
+  document.getElementById('account-modal-title').textContent = editing ? 'Editar Conta' : 'Nova Conta';
+  document.getElementById('acc-edit-id').value = editing ? editing.id : '';
+  document.getElementById('acc-name').value = editing ? editing.name : '';
+  document.getElementById('acc-bank').value = editing ? (editing.bank || '') : '';
+  document.getElementById('acc-initial').value = editing ? editing.initial : '';
+  document.getElementById('acc-iban').value = editing ? (editing.iban || '') : '';
+  accountModalColor = editing ? (editing.color || ACCOUNT_COLORS[0]) : ACCOUNT_COLORS[0];
+  renderAccountColors();
+  document.getElementById('account-modal').style.display = 'flex';
+}
+function closeAccountModal() { document.getElementById('account-modal').style.display = 'none'; }
+function saveAccount() {
+  const id = document.getElementById('acc-edit-id').value;
+  const name = document.getElementById('acc-name').value.trim();
+  if (!name) { highlight('acc-name'); return; }
+  const bank = document.getElementById('acc-bank').value.trim();
+  const iban = document.getElementById('acc-iban').value.trim();
+  const initial = credR2(parseFloat(String(document.getElementById('acc-initial').value).replace(',', '.')) || 0);
+  const idx = S.accounts.findIndex(a => a.id === id);
+  const payload = { id: id || uid(), name, bank, iban, initial, color: accountModalColor };
+  if (idx >= 0) S.accounts[idx] = payload; else S.accounts.push(payload);
+  save(); renderAccounts(); renderAccountSelects(); renderFin(); renderDashboard();
+  closeAccountModal();
+  toast(idx >= 0 ? 'Conta atualizada' : '🏦 Conta criada', 'var(--brand)');
+}
+function editAccount(id) { openAccountModal(id); }
+function deleteAccount(id) {
+  const acc = S.accounts.find(a => a.id === id);
+  if (!acc) return;
+  const linked = S.transactions.filter(t => t.accountId === id).length;
+  const msg = linked ? `Eliminar “${acc.name}”? ${linked} movimento(s) vão ficar sem conta associada (não são apagados).` : `Eliminar “${acc.name}”?`;
+  if (!confirm(msg)) return;
+  S.accounts = S.accounts.filter(a => a.id !== id);
+  S.transactions.forEach(t => { if (t.accountId === id) t.accountId = ''; });
+  save(); renderAccounts(); renderAccountSelects(); renderFin(); renderDashboard();
+  toast('Conta eliminada');
+}
+
+/* ═══════════════════════════════════════════════════════════
    IMPORTAÇÃO DE EXTRATOS BANCÁRIOS (CSV / Excel / PDF)
    Classificação por regras locais + revisão antes de gravar
 ═══════════════════════════════════════════════════════════ */
@@ -3827,6 +3939,7 @@ function renderImportReview() {
   document.getElementById('import-step-upload').style.display = 'none';
   document.getElementById('import-step-review').style.display = 'block';
   document.getElementById('import-footer').style.display = 'flex';
+  renderAccountSelects();
   const cats = expenseCats();
   document.getElementById('import-tbody').innerHTML = importRows.map((r, i) => {
     const catOpts = `<option value="">— por classificar —</option>` + cats.map(c => `<option ${c === r.cat ? 'selected' : ''}>${esc(c)}</option>`).join('');
@@ -3858,11 +3971,12 @@ function confirmImport() {
   if (!inc.length) { toast('Nada selecionado', 'var(--red)'); return; }
   const noCat = inc.filter(r => !r.cat).length;
   if (noCat && !confirm(`${noCat} despesa(s) sem categoria serão importadas como “Outros”. Continuar?`)) return;
+  const accountId = document.getElementById('import-account')?.value || '';
   let added = 0;
   inc.forEach(r => {
     const cat = r.cat || resolveCat('Outros') || expenseCats()[0] || 'Outros';
     const subCat = r.cat ? r.subCat : (subsForCat(cat)[0] || 'Geral');
-    S.transactions.push({ id: uid(), type: 'expense', desc: r.desc, amount: credR2(r.amount), cat, subCat, creditId: '', date: r.date || today(), note: 'Importado do extrato' });
+    S.transactions.push({ id: uid(), type: 'expense', desc: r.desc, amount: credR2(r.amount), cat, subCat, creditId: '', accountId, date: r.date || today(), note: 'Importado do extrato' });
     if (r.cat) impLearnRule(r.desc, r.cat, r.subCat);
     added++;
   });
@@ -3964,5 +4078,12 @@ Object.assign(window, {
   importSetCat,
   importSetSub,
   importSelectAll,
-  confirmImport
+  confirmImport,
+  toggleTimeList,
+  openAccountModal,
+  closeAccountModal,
+  saveAccount,
+  editAccount,
+  deleteAccount,
+  pickAccountColor
 });

@@ -494,3 +494,15 @@ input[type=range]{accent-color:var(--brand)}
 .import-table select.unclassified{border-color:var(--gold);color:var(--gold)}
 .import-desc{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .import-amt{font-family:var(--font-mono);text-align:right;white-space:nowrap;color:var(--red)}
+.time-list-more{width:100%;background:rgba(255,255,255,.03);border:none;border-top:1px solid var(--border);color:var(--brand-l);font-family:var(--font-sans);font-size:.78rem;font-weight:600;letter-spacing:.04em;padding:12px;cursor:pointer;transition:background .18s}
+.time-list-more:hover{background:rgba(16,185,129,.08)}
+.acc-card{position:relative;background:linear-gradient(160deg,rgba(39,39,42,.55),rgba(24,24,27,.85));border:1px solid var(--border);border-left:3px solid var(--acc,var(--brand));border-radius:14px;padding:14px 16px;transition:border-color .2s,transform .2s}
+.acc-card:hover{transform:translateY(-2px);border-color:var(--border2)}
+.acc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+.acc-name{font-weight:700;color:#fff;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acc-bank{font-size:.72rem;color:var(--text3);font-family:var(--font-mono);margin-top:2px}
+.acc-actions{display:flex;gap:2px;flex-shrink:0}
+.acc-actions button{background:none;border:none;color:var(--text3);cursor:pointer;font-size:.9rem;padding:2px 5px;border-radius:6px;transition:all .15s;line-height:1}
+.acc-actions button:hover{color:#fff;background:rgba(255,255,255,.08)}
+.acc-bal{font-family:var(--font-mono);font-weight:800;font-size:1.3rem;letter-spacing:-.01em}
+.acc-meta{font-size:.68rem;color:var(--text3);margin-top:2px}
