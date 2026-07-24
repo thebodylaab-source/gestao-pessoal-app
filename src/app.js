@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+// xlsx e pdfjs-dist são carregados dinamicamente só quando se importa um extrato (mantém o arranque leve)
 
 // --- migrated inline script 1 ---
 const PASSWORD_HASH_KEY = 'gp_password_sha256';
@@ -369,6 +370,7 @@ function normalizePatrimony(input) {
 
 function normalizeState() {
   if (!Array.isArray(S.creditLog)) S.creditLog = [];
+  if (!Array.isArray(S.importRules)) S.importRules = [];
   S.credits = (Array.isArray(S.credits) ? S.credits : []).map(c => ({
     ...c,
     share: (c.share == null ? 100 : Math.min(100, Math.max(1, Number(c.share) || 100))),
@@ -402,6 +404,7 @@ function resetState(data = {}) {
   S.budgets = Array.isArray(data.budgets) ? data.budgets : [];
   S.credits = Array.isArray(data.credits) ? data.credits : [];
   S.creditLog = Array.isArray(data.creditLog) ? data.creditLog : [];
+  S.importRules = Array.isArray(data.importRules) ? data.importRules : [];
   S.emergency = data.emergency && typeof data.emergency === 'object' ? data.emergency : createEmergencyState();
   S.patrimony = data.patrimony && typeof data.patrimony === 'object' ? data.patrimony : { items: [], categories: createDefaultPatrimonyCategories() };
   S.categories = data.categories && typeof data.categories === 'object' ? data.categories : createDefaultCategories();
@@ -441,7 +444,7 @@ function switchLocalUser(userId = null, options = {}) {
 }
 
 function stateSnapshot() {
-  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, creditLog: S.creditLog, emergency: S.emergency, patrimony: S.patrimony };
+  const d = { transactions: S.transactions, timeEntries: S.timeEntries, investments: S.investments, budgets: S.budgets, categories: S.categories, credits: S.credits, creditLog: S.creditLog, importRules: S.importRules, emergency: S.emergency, patrimony: S.patrimony };
   return d;
 }
 
@@ -3581,6 +3584,304 @@ window.addEventListener('resize', () => {
   }
 });
 
+/* ═══════════════════════════════════════════════════════════
+   IMPORTAÇÃO DE EXTRATOS BANCÁRIOS (CSV / Excel / PDF)
+   Classificação por regras locais + revisão antes de gravar
+═══════════════════════════════════════════════════════════ */
+const DEFAULT_IMPORT_RULES = [
+  {kw:'continente',cat:'Alimentação'},{kw:'pingo doce',cat:'Alimentação'},{kw:'lidl',cat:'Alimentação'},{kw:'auchan',cat:'Alimentação'},{kw:'jumbo',cat:'Alimentação'},{kw:'mercadona',cat:'Alimentação'},{kw:'minipreco',cat:'Alimentação'},{kw:'intermarche',cat:'Alimentação'},{kw:'meu super',cat:'Alimentação'},{kw:'supermercado',cat:'Alimentação'},
+  {kw:'galp',cat:'Transporte'},{kw:'repsol',cat:'Transporte'},{kw:'cepsa',cat:'Transporte'},{kw:'prio',cat:'Transporte'},{kw:'via verde',cat:'Transporte'},{kw:'brisa',cat:'Transporte'},{kw:'metro',cat:'Transporte'},{kw:'carris',cat:'Transporte'},{kw:'comboios',cat:'Transporte'},{kw:'bolt',cat:'Transporte'},{kw:'uber',cat:'Transporte'},{kw:'parque',cat:'Transporte'},
+  {kw:'edp',cat:'Habitação'},{kw:'endesa',cat:'Habitação'},{kw:'iberdrola',cat:'Habitação'},{kw:'agua',cat:'Habitação'},{kw:'epal',cat:'Habitação'},{kw:'renda',cat:'Habitação'},{kw:'condominio',cat:'Habitação'},{kw:'ikea',cat:'Habitação'},{kw:'leroy',cat:'Habitação'},
+  {kw:'farmacia',cat:'Saúde'},{kw:'hospital',cat:'Saúde'},{kw:'clinica',cat:'Saúde'},{kw:'medis',cat:'Saúde'},{kw:'advancecare',cat:'Saúde'},{kw:'dentista',cat:'Saúde'},{kw:'analises',cat:'Saúde'},
+  {kw:'netflix',cat:'Lazer'},{kw:'spotify',cat:'Lazer'},{kw:'hbo',cat:'Lazer'},{kw:'disney',cat:'Lazer'},{kw:'cinema',cat:'Lazer'},{kw:'fnac',cat:'Lazer'},{kw:'steam',cat:'Lazer'},{kw:'ginasio',cat:'Lazer'},{kw:'fitness',cat:'Lazer'},
+  {kw:'zara',cat:'Vestuário'},{kw:'h&m',cat:'Vestuário'},{kw:'primark',cat:'Vestuário'},{kw:'bershka',cat:'Vestuário'},{kw:'nike',cat:'Vestuário'},{kw:'sport zone',cat:'Vestuário'},{kw:'decathlon',cat:'Vestuário'},
+  {kw:'wook',cat:'Educação'},{kw:'bertrand',cat:'Educação'},{kw:'udemy',cat:'Educação'},{kw:'universidade',cat:'Educação'},{kw:'escola',cat:'Educação'},
+  {kw:'worten',cat:'Tecnologia'},{kw:'apple',cat:'Tecnologia'},{kw:'amazon',cat:'Tecnologia'},{kw:'aliexpress',cat:'Tecnologia'},{kw:'pcdiga',cat:'Tecnologia'},{kw:'meo',cat:'Tecnologia'},{kw:'vodafone',cat:'Tecnologia'},{kw:'nowo',cat:'Tecnologia'},{kw:'google',cat:'Tecnologia'},
+  {kw:'mcdonald',cat:'Restauração'},{kw:'burger king',cat:'Restauração'},{kw:'kfc',cat:'Restauração'},{kw:'telepizza',cat:'Restauração'},{kw:'uber eats',cat:'Restauração'},{kw:'ubereats',cat:'Restauração'},{kw:'glovo',cat:'Restauração'},{kw:'bolt food',cat:'Restauração'},{kw:'restaurante',cat:'Restauração'},{kw:'cafe',cat:'Restauração'},{kw:'starbucks',cat:'Restauração'},{kw:'padaria',cat:'Restauração'}
+];
+const IMPORT_NOISE = ['compra','pagamento','pag','pgto','com','cartao','debito','directo','direto','transferencia','transf','mbway','mb','way','pt','portugal','lisboa','porto','servico','servicos','online','ref','tpa','cont','deb','lda','sa','unipessoal'];
+
+let importRows = [];
+
+function ensureImportRules() {
+  if (!Array.isArray(S.importRules)) S.importRules = [];
+  if (!S.importRules.length) S.importRules = DEFAULT_IMPORT_RULES.map(r => ({ ...r, subCat: r.subCat || 'Geral' }));
+}
+function impNorm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
+function impPad(n) { return String(n).padStart(2, '0'); }
+function expenseCats() { return (S.categories && S.categories.expense ? S.categories.expense : []).map(c => c.name); }
+function subsForCat(name) { const c = (S.categories && S.categories.expense ? S.categories.expense : []).find(x => x.name === name); return (c && c.subs && c.subs.length) ? c.subs : ['Geral']; }
+function resolveCat(name) { return expenseCats().find(n => impNorm(n) === impNorm(name)) || ''; }
+
+function impParseMoney(raw) {
+  if (raw == null) return NaN;
+  const original = String(raw).trim();
+  let s = original.replace(/\s|€|eur/gi, '');
+  const neg = /^-/.test(s) || /-$/.test(s) || /^\(.*\)$/.test(original);
+  s = s.replace(/[()]/g, '').replace(/[^0-9.,]/g, '');
+  if (!s) return NaN;
+  const hasComma = s.includes(','), hasDot = s.includes('.');
+  if (hasComma && hasDot) s = s.replace(/\./g, '').replace(',', '.');
+  else if (hasComma) s = s.replace(',', '.');
+  else if (hasDot) { const parts = s.split('.'); const last = parts[parts.length - 1]; if (parts.length > 2 || last.length === 3) s = s.replace(/\./g, ''); }
+  const n = parseFloat(s);
+  if (isNaN(n)) return NaN;
+  return neg ? -Math.abs(n) : n;
+}
+function impParseDate(raw) {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  let m = s.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (m) return `${m[1]}-${impPad(m[2])}-${impPad(m[3])}`;
+  m = s.match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);
+  if (m) { let y = m[3]; if (y.length === 2) y = '20' + y; return `${y}-${impPad(m[2])}-${impPad(m[1])}`; }
+  return '';
+}
+
+const H_DATE = ['data mov', 'data valor', 'data lanc', 'data', 'date', 'dt mov'];
+const H_DESC = ['descri', 'descrit', 'movimento', 'histor', 'referenc', 'operac', 'memo', 'detalhe'];
+const H_AMOUNT = ['montante', 'valor', 'importanc', 'amount'];
+const H_DEBIT = ['debito', 'debit', 'saida', 'levantamento'];
+const H_CREDIT = ['credito', 'credit', 'entrada', 'deposito'];
+
+function impMatrixToRows(matrix) {
+  matrix = matrix.filter(r => Array.isArray(r));
+  let headerIdx = -1, cols = {};
+  for (let r = 0; r < Math.min(matrix.length, 25); r++) {
+    const cells = matrix[r].map(impNorm);
+    const findAny = keys => cells.findIndex(c => keys.some(k => c.includes(k)));
+    const di = findAny(H_DATE), desci = findAny(H_DESC);
+    const dbi = cells.findIndex(c => H_DEBIT.some(k => c.includes(k)));
+    const cri = cells.findIndex(c => H_CREDIT.some(k => c.includes(k)));
+    const ai = cells.findIndex(c => H_AMOUNT.some(k => c.includes(k)) && !H_DATE.some(k => c.includes(k)));
+    if (di >= 0 && desci >= 0 && (ai >= 0 || dbi >= 0)) { headerIdx = r; cols = { date: di, desc: desci, amount: ai, debit: dbi, credit: cri }; break; }
+  }
+  const rows = [];
+  if (headerIdx >= 0) {
+    for (let r = headerIdx + 1; r < matrix.length; r++) {
+      const row = matrix[r]; if (!row || !row.length) continue;
+      const date = impParseDate(row[cols.date]);
+      const desc = String(row[cols.desc] || '').trim();
+      if (!desc && !date) continue;
+      let amount = NaN, isExpense = true;
+      if (cols.debit >= 0 || cols.credit >= 0) {
+        const deb = cols.debit >= 0 ? impParseMoney(row[cols.debit]) : NaN;
+        const cre = cols.credit >= 0 ? impParseMoney(row[cols.credit]) : NaN;
+        if (!isNaN(deb) && Math.abs(deb) > 0) { amount = Math.abs(deb); isExpense = true; }
+        else if (!isNaN(cre) && Math.abs(cre) > 0) { amount = Math.abs(cre); isExpense = false; }
+      } else if (cols.amount >= 0) {
+        const v = impParseMoney(row[cols.amount]);
+        if (!isNaN(v)) { amount = Math.abs(v); isExpense = v < 0; }
+      }
+      if (isNaN(amount) || amount <= 0 || !isExpense) continue;
+      rows.push({ date: date || today(), desc: desc || 'Movimento', amount, cat: '', subCat: 'Geral', include: true });
+    }
+  } else {
+    for (const row of matrix) {
+      if (!row || row.length < 2) continue;
+      const dateCell = row.find(c => impParseDate(c));
+      const date = impParseDate(dateCell);
+      const monies = row.map(impParseMoney).filter(v => !isNaN(v));
+      const desc = row.filter(c => !impParseDate(c) && isNaN(impParseMoney(c))).join(' ').trim();
+      if (!date || !monies.length || !desc) continue;
+      const v = monies[0];
+      if (v >= 0) continue;
+      rows.push({ date, desc, amount: Math.abs(v), cat: '', subCat: 'Geral', include: true });
+    }
+  }
+  return rows;
+}
+
+function impSplitCSVLine(line, delim) {
+  const out = []; let cur = '', q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else q = !q; }
+    else if (ch === delim && !q) { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur); return out.map(c => c.trim());
+}
+function impParseCSV(text) {
+  const firstLine = text.split(/\r?\n/).find(l => l.trim()) || '';
+  const counts = { ';': (firstLine.match(/;/g) || []).length, ',': (firstLine.match(/,/g) || []).length, '\t': (firstLine.match(/\t/g) || []).length };
+  const delim = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0] || ';';
+  const matrix = text.split(/\r?\n/).filter(l => l.length).map(line => impSplitCSVLine(line, delim));
+  return impMatrixToRows(matrix);
+}
+async function impReadText(file) {
+  const buf = await file.arrayBuffer();
+  let txt = new TextDecoder('utf-8').decode(buf);
+  if ((txt.match(/�/g) || []).length > 3) txt = new TextDecoder('windows-1252').decode(buf);
+  return txt;
+}
+async function impParseXLSX(file) {
+  const XLSX = await import('xlsx');
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+  return impMatrixToRows(matrix);
+}
+let _pdfjsLib = null;
+async function impLoadPdfjs() {
+  if (_pdfjsLib) return _pdfjsLib;
+  const lib = await import('pdfjs-dist');
+  const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+  lib.GlobalWorkerOptions.workerSrc = workerUrl;
+  _pdfjsLib = lib;
+  return lib;
+}
+async function impParsePDF(file) {
+  const pdfjsLib = await impLoadPdfjs();
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const lines = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const byY = {};
+    tc.items.forEach(it => { const y = Math.round(it.transform[5]); (byY[y] = byY[y] || []).push(it); });
+    Object.keys(byY).map(Number).sort((a, b) => b - a).forEach(y => {
+      const text = byY[y].sort((a, b) => a.transform[4] - b.transform[4]).map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+      if (text) lines.push(text);
+    });
+  }
+  const rows = [];
+  const dateRe = /\b(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}|\d{4}-\d{2}-\d{2})\b/;
+  const moneyRe = /-?\d{1,3}(?:[.\s]\d{3})*,\d{2}|-?\d+,\d{2}/g;
+  for (const line of lines) {
+    const dm = line.match(dateRe); if (!dm) continue;
+    const monies = line.match(moneyRe); if (!monies || !monies.length) continue;
+    const amtStr = monies.length >= 2 ? monies[monies.length - 2] : monies[monies.length - 1];
+    const amount = impParseMoney(amtStr);
+    if (isNaN(amount) || amount === 0) continue;
+    let desc = line.replace(dateRe, ' ');
+    monies.forEach(mm => { desc = desc.split(mm).join(' '); });
+    desc = desc.replace(/\s+/g, ' ').replace(/^[-–·|:\s]+|[-–·|:\s]+$/g, '').trim();
+    rows.push({ date: impParseDate(dm[1]), desc: desc || 'Movimento', amount: Math.abs(amount), cat: '', subCat: 'Geral', include: true });
+  }
+  return rows;
+}
+
+function impClassify(row) {
+  const d = impNorm(row.desc);
+  for (const rule of S.importRules) {
+    if (rule.kw && d.includes(impNorm(rule.kw))) {
+      const cat = resolveCat(rule.cat);
+      if (cat) { row.cat = cat; const subs = subsForCat(cat); row.subCat = subs.includes(rule.subCat) ? rule.subCat : subs[0]; return; }
+    }
+  }
+}
+function impExtractMerchant(desc) {
+  const d = impNorm(desc).replace(/\d+/g, ' ').replace(/[^a-z\s]/g, ' ');
+  const words = d.split(/\s+/).filter(w => w.length >= 3 && !IMPORT_NOISE.includes(w));
+  return words.slice(0, 2).join(' ').trim();
+}
+function impLearnRule(desc, cat, subCat) {
+  const kw = impExtractMerchant(desc);
+  if (!kw || kw.length < 3) return;
+  const ex = S.importRules.find(r => impNorm(r.kw) === kw);
+  if (ex) { ex.cat = cat; ex.subCat = subCat; } else S.importRules.push({ kw, cat, subCat });
+}
+
+/* ── UI ── */
+function openImportModal() {
+  ensureImportRules();
+  importRows = [];
+  document.getElementById('import-step-upload').style.display = 'block';
+  document.getElementById('import-step-review').style.display = 'none';
+  document.getElementById('import-footer').style.display = 'none';
+  document.getElementById('import-parse-status').textContent = '';
+  document.getElementById('import-file').value = '';
+  document.getElementById('import-modal').style.display = 'flex';
+}
+function closeImportModal() { document.getElementById('import-modal').style.display = 'none'; }
+function importBack() {
+  document.getElementById('import-step-upload').style.display = 'block';
+  document.getElementById('import-step-review').style.display = 'none';
+  document.getElementById('import-footer').style.display = 'none';
+  document.getElementById('import-file').value = '';
+  document.getElementById('import-parse-status').textContent = '';
+}
+async function handleImportFile(file) {
+  if (!file) return;
+  const status = document.getElementById('import-parse-status');
+  status.textContent = `A ler “${file.name}”…`;
+  const name = file.name.toLowerCase();
+  try {
+    let rows = [];
+    if (name.endsWith('.pdf')) rows = await impParsePDF(file);
+    else if (name.endsWith('.xlsx') || name.endsWith('.xls')) rows = await impParseXLSX(file);
+    else rows = impParseCSV(await impReadText(file));
+    if (!rows.length) { status.innerHTML = '⚠ Não reconheci despesas neste ficheiro. Confirme que é um extrato de movimentos, ou experimente exportar em CSV/Excel.'; return; }
+    rows.forEach(impClassify);
+    importRows = rows;
+    renderImportReview();
+  } catch (e) {
+    console.error('[import]', e);
+    status.innerHTML = '⚠ Erro ao ler o ficheiro: ' + esc(e.message || String(e));
+  }
+}
+function renderImportReview() {
+  document.getElementById('import-step-upload').style.display = 'none';
+  document.getElementById('import-step-review').style.display = 'block';
+  document.getElementById('import-footer').style.display = 'flex';
+  const cats = expenseCats();
+  document.getElementById('import-tbody').innerHTML = importRows.map((r, i) => {
+    const catOpts = `<option value="">— por classificar —</option>` + cats.map(c => `<option ${c === r.cat ? 'selected' : ''}>${esc(c)}</option>`).join('');
+    const subOpts = subsForCat(r.cat).map(s => `<option ${s === r.subCat ? 'selected' : ''}>${esc(s)}</option>`).join('');
+    return `<tr data-i="${i}" class="${r.include ? '' : 'excluded'}">
+      <td><input type="checkbox" ${r.include ? 'checked' : ''} onchange="importToggle(${i}, this.checked)"></td>
+      <td style="white-space:nowrap;color:var(--text2)">${esc(r.date)}</td>
+      <td><div class="import-desc" title="${esc(r.desc)}">${esc(r.desc)}</div></td>
+      <td class="import-amt">${fmt(r.amount)}</td>
+      <td><select class="${r.cat ? '' : 'unclassified'}" onchange="importSetCat(${i}, this.value)">${catOpts}</select></td>
+      <td><select onchange="importSetSub(${i}, this.value)">${subOpts}</select></td>
+    </tr>`;
+  }).join('');
+  updateImportSummary();
+}
+function updateImportSummary() {
+  const inc = importRows.filter(r => r.include);
+  const uncl = inc.filter(r => !r.cat).length;
+  const total = inc.reduce((a, r) => a + r.amount, 0);
+  document.getElementById('import-summary').innerHTML = `<strong style="color:#fff">${inc.length}</strong> despesas selecionadas · <strong style="color:var(--red)">${fmt(total)}</strong>` + (uncl ? ` · <span style="color:var(--gold)">${uncl} por classificar</span>` : '');
+  document.getElementById('import-confirm').textContent = `Importar ${inc.length} despesa${inc.length === 1 ? '' : 's'}`;
+}
+function importToggle(i, v) { importRows[i].include = v; const tr = document.querySelector(`#import-tbody tr[data-i="${i}"]`); if (tr) tr.classList.toggle('excluded', !v); updateImportSummary(); }
+function importSetCat(i, v) { importRows[i].cat = v; importRows[i].subCat = subsForCat(v)[0] || 'Geral'; renderImportReview(); }
+function importSetSub(i, v) { importRows[i].subCat = v; }
+function importSelectAll(v) { importRows.forEach(r => r.include = v); renderImportReview(); }
+function confirmImport() {
+  const inc = importRows.filter(r => r.include);
+  if (!inc.length) { toast('Nada selecionado', 'var(--red)'); return; }
+  const noCat = inc.filter(r => !r.cat).length;
+  if (noCat && !confirm(`${noCat} despesa(s) sem categoria serão importadas como “Outros”. Continuar?`)) return;
+  let added = 0;
+  inc.forEach(r => {
+    const cat = r.cat || resolveCat('Outros') || expenseCats()[0] || 'Outros';
+    const subCat = r.cat ? r.subCat : (subsForCat(cat)[0] || 'Geral');
+    S.transactions.push({ id: uid(), type: 'expense', desc: r.desc, amount: credR2(r.amount), cat, subCat, creditId: '', date: r.date || today(), note: 'Importado do extrato' });
+    if (r.cat) impLearnRule(r.desc, r.cat, r.subCat);
+    added++;
+  });
+  save(); renderFin(); renderBudget(); renderDashboard(); renderCredits();
+  closeImportModal();
+  toast(`✓ ${added} despesa(s) importada(s)`, 'var(--teal)');
+}
+
+(function initImportUI() {
+  const fileInput = document.getElementById('import-file');
+  const drop = document.getElementById('import-drop');
+  if (!fileInput || !drop) return;
+  drop.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) handleImportFile(e.target.files[0]); });
+  ['dragover', 'dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('drag'); }));
+  drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) handleImportFile(f); });
+})();
+
 Object.assign(window, {
   addCategory,
   addCredit,
@@ -3655,5 +3956,13 @@ Object.assign(window, {
   setCredSimTab,
   setCredSimMode,
   toggleCredSplit,
-  updateCredShareHint
+  updateCredShareHint,
+  openImportModal,
+  closeImportModal,
+  importBack,
+  importToggle,
+  importSetCat,
+  importSetSub,
+  importSelectAll,
+  confirmImport
 });

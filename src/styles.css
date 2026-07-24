@@ -482,3 +482,15 @@ body::before{background:
 .toggle-switch.on::after{transform:translateX(16px)}
 input[type=range]{accent-color:var(--brand)}
 @media(max-width:960px){.cred-main-grid{grid-template-columns:1fr!important}.cred-main-grid .card[style*="sticky"]{position:static!important}}
+#import-modal{font-family:var(--font-sans)}
+#import-drop.drag{border-color:var(--brand);background:rgba(16,185,129,.06)}
+.import-table{width:100%;border-collapse:collapse;font-size:.82rem}
+.import-table th{position:sticky;top:0;background:#18181b;text-align:left;font-size:.66rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);padding:10px;border-bottom:1px solid var(--border);z-index:1}
+.import-table td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05);color:var(--text);vertical-align:middle}
+.import-table tr.excluded td{opacity:.35}
+.import-table input[type=checkbox]{width:16px;height:16px;accent-color:var(--brand);cursor:pointer}
+.import-table select{width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:.78rem;padding:5px 7px;outline:none}
+.import-table select:focus{border-color:var(--brand)}
+.import-table select.unclassified{border-color:var(--gold);color:var(--gold)}
+.import-desc{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.import-amt{font-family:var(--font-mono);text-align:right;white-space:nowrap;color:var(--red)}
