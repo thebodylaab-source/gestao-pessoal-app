@@ -36,8 +36,8 @@ async function checkPassword() {
   }
   try {
     if (await sha256(input) === storedPasswordHash()) {
-      sessionStorage.setItem('gp_unlocked', '1');
       document.getElementById('lockscreen').style.display = 'none';
+      try { sessionStorage.setItem('gp_unlocked', '1'); } catch (e) {}
     } else {
       showLockError();
     }
@@ -3976,22 +3976,25 @@ window.addEventListener('load', () => {
 // ══════════════════════════════════════
 // INIT
 // ══════════════════════════════════════
-initCloud();
-document.getElementById('fin-date').value = today();
-document.getElementById('time-date').value = today();
-document.getElementById('inv-date').value = today();
-document.getElementById('pat-date').value = today();
-document.getElementById('cred-start').value = today();
-document.getElementById('res-move-date').value = today();
-renderTimeSubcats();
-renderTimeSubcategorySelect();
-renderFin();
-renderInv();
-renderPatrimony();
-renderDashboard();
-renderBudget();
-renderEmergency();
-renderCredits();
+// Arranque adiado: só corre depois de TODO o módulo estar avaliado (evita erros de
+// "temporal dead zone" ao chamar renders que usam constantes declaradas mais abaixo).
+function __bootApp() {
+  try { initCloud(); } catch (e) { console.error('[boot] initCloud', e); }
+  ['fin-date', 'time-date', 'inv-date', 'pat-date', 'cred-start', 'res-move-date'].forEach(id => { const el = document.getElementById(id); if (el) el.value = today(); });
+  try {
+    renderTimeSubcats();
+    renderTimeSubcategorySelect();
+    renderFin();
+    renderInv();
+    renderPatrimony();
+    renderDashboard();
+    renderBudget();
+    renderEmergency();
+    renderCredits();
+  } catch (e) { console.error('[boot] render', e); }
+}
+if (document.readyState === 'complete') __bootApp();
+else window.addEventListener('load', __bootApp);
 
 window.addEventListener('keydown', e => {
   if (e.key === 'Enter' && ['fin-desc','fin-amount'].includes(e.target.id)) addTransaction();
