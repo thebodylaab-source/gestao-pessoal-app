@@ -492,6 +492,31 @@ function showTab(tab, btn) {
   if (tab === 'orcamento') renderBudget();
   if (tab === 'reserva') renderEmergency();
   if (tab === 'creditos') renderCredits();
+  updateFabLabel(tab);
+}
+
+const FAB_LABELS = { financeiro: 'Nova transação', tempo: 'Registar tempo', investimentos: 'Nova posição', patrimonio: 'Novo item', creditos: 'Novo crédito', reserva: 'Nova reserva', orcamento: 'Novo orçamento', dashboard: 'Registar' };
+function updateFabLabel(tab) { const el = document.getElementById('fab-label'); if (el) el.textContent = FAB_LABELS[tab] || 'Registar'; }
+
+// Registo rápido (mobile): salta para o formulário de registo do separador ativo e foca-o
+function quickRegister() {
+  function findForm(page) {
+    if (!page) return null;
+    const btn = [...page.querySelectorAll('.btn-primary')].find(b => /registar|adicionar|criar|definir|guardar|nova|novo/i.test(b.textContent));
+    return btn ? btn.closest('.card') : null;
+  }
+  let active = document.querySelector('.page.active');
+  let card = findForm(active);
+  if (!card) {
+    const finBtn = document.querySelector(".tab-btn[onclick*='financeiro']");
+    if (finBtn) finBtn.click();
+    active = document.getElementById('page-financeiro');
+    card = findForm(active);
+  }
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const field = card.querySelector('input[type=text],textarea') || card.querySelector('input:not([type=hidden]),select,textarea');
+  if (field) setTimeout(() => { try { field.focus({ preventScroll: true }); } catch (e) { try { field.focus(); } catch (e2) {} } }, 380);
 }
 
 // ══════════════════════════════════════
@@ -4473,5 +4498,6 @@ Object.assign(window, {
   openGoalsModal,
   closeGoalsModal,
   onGoalFiModeChange,
-  saveGoals
+  saveGoals,
+  quickRegister
 });
